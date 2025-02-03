@@ -44,12 +44,14 @@ export const SendAllFunds = () => {
       if (balance === '0') continue;
 
       try {
+        const balanceBigInt = BigInt(balance); // Ensure the balance is a valid BigInt
+
         const { request } = await publicClient.simulateContract({
           account: walletClient.account,
           address: contract_address as `0x${string}`,
           abi: erc20ABI,
           functionName: 'transfer',
-          args: [destinationAddress as `0x${string}`, BigInt(balance)],
+          args: [destinationAddress as `0x${string}`, balanceBigInt],
         });
 
         await walletClient.writeContract(request);
