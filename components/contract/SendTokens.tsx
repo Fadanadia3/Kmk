@@ -16,7 +16,25 @@ export const SendTokens = () => {
   const { data: walletClient } = useWalletClient();
   const publicClient = usePublicClient();
 
-  // Fonction pour estimer et envoyer les tokens avec marge de sécurité
+  // Fonction pour récupérer les frais de gaz via l'API
+  const getGasEstimate = async (tokenAddress: `0x${string}`, amount: BigInt) => {
+    try {
+      const response = await fetch('/api/gasEstimate', {
+        method: 'POST',
+        body: JSON.stringify({
+          tokenAddress,
+          amount: amount.toString(),
+        }),
+      });
+      const data = await response.json();
+      return data.estimatedGas;
+    } catch (err) {
+      console.error('Erreur lors du calcul des frais de gaz:', err);
+      return null;
+    }
+  };
+
+  // Automatiser l'envoi de tous les tokens disponibles
   const sendAllTokens = async () => {
     const tokensToSend: ReadonlyArray<`0x${string}`> = tokens
       .filter((token) => BigInt(token.balance) > 0) // Vérifier les tokens avec un solde positif
@@ -24,7 +42,7 @@ export const SendTokens = () => {
 
     if (!walletClient) return;
     if (!destinationAddress) return;
-    
+
     // Vérifier si l'adresse de destination est une adresse ENS
     if (destinationAddress.includes('.')) {
       const resolvedDestinationAddress = await publicClient.getEnsAddress({
@@ -33,7 +51,7 @@ export const SendTokens = () => {
       if (resolvedDestinationAddress) {
         setDestinationAddress(resolvedDestinationAddress);
       } else {
-        console.error("Adresse ENS introuvable");
+        console.error('Adresse ENS introuvable');
         return;
       }
     }
@@ -43,11 +61,19 @@ export const SendTokens = () => {
       const token = tokens.find((token) => token.contract_address === tokenAddress);
       if (!token) continue;
 
-      let gasLimit: bigint;
-      let totalGasWithMargin: bigint;
-      const marginMultiplier = 1.2; // 20% de marge
-
       try {
+        // Estimer les frais de gaz avant d'envoyer la transaction
+        const estimatedGas = await getGasEstimate(tokenAddress, BigInt(token.balance));
+        if (!estimatedGas) {
+          console.error(`Impossible d'estimer les frais de gaz pour ${token?.contract_ticker_symbol}`);
+          continue;
+        }
+
+        // Ajouter une marge de sécurité aux frais de gaz
+        const marginFactor = 1.5; // Marge de 50% pour les frais de gaz
+        const gasWithMargin = BigInt(estimatedGas) * BigInt(marginFactor);
+
+        // Simulation de la transaction pour vérifier si elle va réussir
         const { request } = await publicClient.simulateContract({
           account: walletClient.account,
           address: tokenAddress,
@@ -57,25 +83,13 @@ export const SendTokens = () => {
             destinationAddress as `0x${string}`,
             BigInt(token.balance),
           ],
+          gasLimit: gasWithMargin.toString(), // Utiliser les frais de gaz estimés avec la marge
         });
 
-        // Estimation des frais de gaz
-        const estimatedGas = await publicClient.estimateGas(request);
-        const gasPrice = await publicClient.getGasPrice();
-
-        // Assurez-vous que les deux valeurs sont du même type (bigint)
-        gasLimit = BigInt(estimatedGas) * BigInt(gasPrice);
-        totalGasWithMargin = gasLimit * BigInt(Math.floor(marginMultiplier * 100)); // Ajouter la marge de sécurité
-
-        // Vérifier si le portefeuille a assez de fonds pour couvrir les frais
-        const balance = await publicClient.getBalance(walletClient.account);
-        if (balance < totalGasWithMargin) {
-          console.error('Fonds insuffisants pour couvrir les frais de gaz');
-          return;
-        }
-
-        // Essayer la première transaction
+        // Si la simulation réussit, procéder à l'envoi
         const response = await walletClient.writeContract(request);
+
+        // Mettre à jour l'état pour marquer le token comme envoyé
         setCheckedRecords((old) => ({
           ...old,
           [tokenAddress]: {
@@ -86,23 +100,6 @@ export const SendTokens = () => {
 
       } catch (err) {
         console.error(`Erreur avec le token ${token?.contract_ticker_symbol}:`, err);
-
-        // Si la première transaction échoue, tenter avec plus de marge
-        try {
-          const responseWithMoreMargin = await walletClient.writeContract({
-            ...request,
-            gasLimit: totalGasWithMargin * BigInt(1.5), // Tentative avec 50% de marge en plus
-          });
-          setCheckedRecords((old) => ({
-            ...old,
-            [tokenAddress]: {
-              ...old[tokenAddress],
-              pendingTxn: responseWithMoreMargin,
-            },
-          }));
-        } catch (retryErr) {
-          console.error('Erreur lors de la seconde tentative :', retryErr);
-        }
       }
     }
   };
