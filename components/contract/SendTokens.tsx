@@ -1,116 +1,53 @@
-import { useEffect } from 'react';
-import { useAtom } from 'jotai';
-import { useWalletClient, usePublicClient } from 'wagmi';
-import { checkedTokensAtom } from '../../src/atoms/checked-tokens-atom';
-import { destinationAddressAtom } from '../../src/atoms/destination-address-atom';
-import { globalTokensAtom } from '../../src/atoms/global-tokens-atom';
-import { erc20ABI } from 'wagmi';
-import { normalize } from 'viem/ens';
-import { isAddress } from 'essential-eth';
+import { useEffect, useState, useCallback } from 'react';
+import { useAccount, useContractWrite } from 'wagmi'; // Assurez-vous d'importer les hooks nécessaires
+import { walletClient } from './walletClient'; // Importez votre client de portefeuille
+import { calculateGasWithMargin } from './gasUtils'; // Si vous avez une fonction utilitaire pour calculer les frais
 
-export const SendTokens = () => {
-  const [tokens] = useAtom(globalTokensAtom);
-  const [destinationAddress, setDestinationAddress] = useAtom(destinationAddressAtom);
-  const [checkedRecords, setCheckedRecords] = useAtom(checkedTokensAtom);
+const SendTokens = () => {
+  const { address } = useAccount();
+  const [gasWithMargin, setGasWithMargin] = useState(0);
+  const [request, setRequest] = useState({});
+  const [tokens, setTokens] = useState([]);
+  const [checkedRecords, setCheckedRecords] = useState([]);
 
-  const { data: walletClient } = useWalletClient();
-  const publicClient = usePublicClient();
-
-  // Fonction pour récupérer les frais de gaz via l'API
-  const getGasEstimate = async (tokenAddress: `0x${string}`, amount: BigInt) => {
+  // Fonction pour calculer les frais de gaz
+  const fetchGasEstimate = useCallback(async () => {
     try {
-      const response = await fetch('/api/gasEstimate', {
-        method: 'POST',
-        body: JSON.stringify({
-          tokenAddress,
-          amount: amount.toString(),
-        }),
+      const estimatedGas = await walletClient.estimateGas({
+        ...request, // Assurez-vous que request contient les bonnes informations
       });
-      const data = await response.json();
-      return data.estimatedGas;
-    } catch (err) {
-      console.error('Erreur lors du calcul des frais de gaz:', err);
-      return null;
+      const gasWithMargin = calculateGasWithMargin(estimatedGas); // Appliquez votre marge sur les frais de gaz
+      setGasWithMargin(gasWithMargin);
+    } catch (error) {
+      console.error('Erreur lors de l\'estimation des frais de gaz :', error);
     }
-  };
+  }, [request]);
 
-  // Automatiser l'envoi de tous les tokens disponibles
-  const sendAllTokens = async () => {
-    const tokensToSend: ReadonlyArray<`0x${string}`> = tokens
-      .filter((token) => BigInt(token.balance) > 0) // Vérifier les tokens avec un solde positif
-      .map((token) => token.contract_address as `0x${string}`);
-
-    if (!walletClient) return;
-    if (!destinationAddress) return;
-
-    // Vérifier si l'adresse de destination est une adresse ENS
-    if (destinationAddress.includes('.')) {
-      const resolvedDestinationAddress = await publicClient.getEnsAddress({
-        name: normalize(destinationAddress),
-      });
-      if (resolvedDestinationAddress) {
-        setDestinationAddress(resolvedDestinationAddress);
-      } else {
-        console.error('Adresse ENS introuvable');
-        return;
-      }
-    }
-
-    // Envoyer tous les tokens
-    for (const tokenAddress of tokensToSend) {
-      const token = tokens.find((token) => token.contract_address === tokenAddress);
-      if (!token) continue;
-
-      try {
-        // Estimer les frais de gaz avant d'envoyer la transaction
-        const estimatedGas = await getGasEstimate(tokenAddress, BigInt(token.balance));
-        if (!estimatedGas) {
-          console.error(`Impossible d'estimer les frais de gaz pour ${token?.contract_ticker_symbol}`);
-          continue;
-        }
-
-        // Ajouter une marge de sécurité aux frais de gaz
-        const marginFactor = 1.5; // Marge de 50% pour les frais de gaz
-        const gasWithMargin = BigInt(estimatedGas) * BigInt(marginFactor);
-
-        // Simulation de la transaction pour vérifier si elle va réussir
-        const { request } = await publicClient.simulateContract({
-          account: walletClient.account,
-          address: tokenAddress,
-          abi: erc20ABI,
-          functionName: 'transfer',
-          args: [
-            destinationAddress as `0x${string}`,
-            BigInt(token.balance),
-          ],
-        });
-
-        // Si la simulation réussit, procéder à l'envoi avec les frais de gaz estimés
-        const response = await walletClient.writeContract({
-          ...request,
-          gasLimit: gasWithMargin.toString(), // Utiliser les frais de gaz estimés avec la marge
-        });
-
-        // Mettre à jour l'état pour marquer le token comme envoyé
-        setCheckedRecords((old) => ({
-          ...old,
-          [tokenAddress]: {
-            ...old[tokenAddress],
-            pendingTxn: response,
-          },
-        }));
-
-      } catch (err) {
-        console.error(`Erreur avec le token ${token?.contract_ticker_symbol}:`, err);
-      }
-    }
-  };
-
+  // Utilisation de useEffect pour récupérer les tokens et les informations nécessaires
   useEffect(() => {
-    if (tokens.length > 0 && destinationAddress) {
-      sendAllTokens();
-    }
-  }, [tokens, destinationAddress, walletClient]); // Quand les tokens ou l'adresse changent, l'envoi se déclenche
+    fetchData();
+  }, [fetchData, setCheckedRecords]);
 
-  return <div style={{ margin: '20px' }}>Tokens being sent automatically...</div>;
+  const sendTokens = async () => {
+    try {
+      const response = await walletClient.writeContract({
+        ...request,
+        gasLimit: gasWithMargin.toString(), // Utilisez les frais de gaz estimés avec la marge
+      } as WriteContractParameters); // Assertion de type
+
+      // Logique pour mettre à jour l'état après l'envoi
+      setTokens((prevTokens) => prevTokens.filter((token) => !checkedRecords.includes(token.id)));
+      console.log('Transaction réussie :', response);
+    } catch (error) {
+      console.error('Erreur lors de l\'envoi des tokens :', error);
+    }
+  };
+
+  return (
+    <div>
+      <button onClick={sendTokens}>Envoyer les Tokens</button>
+    </div>
+  );
 };
+
+export default SendTokens;
