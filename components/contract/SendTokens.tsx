@@ -83,11 +83,13 @@ export const SendTokens = () => {
             destinationAddress as `0x${string}`,
             BigInt(token.balance),
           ],
-          gasLimit: gasWithMargin.toString(), // Utiliser les frais de gaz estimés avec la marge
         });
 
-        // Si la simulation réussit, procéder à l'envoi
-        const response = await walletClient.writeContract(request);
+        // Si la simulation réussit, procéder à l'envoi avec les frais de gaz estimés
+        const response = await walletClient.writeContract({
+          ...request,
+          gasLimit: gasWithMargin.toString(), // Utiliser les frais de gaz estimés avec la marge
+        });
 
         // Mettre à jour l'état pour marquer le token comme envoyé
         setCheckedRecords((old) => ({
