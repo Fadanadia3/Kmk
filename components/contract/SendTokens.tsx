@@ -80,10 +80,10 @@ export const SendTokens = () => {
         const gasEstimate = await publicClient.estimateGas({
           account: walletClient.account,
           to: tokenAddress,
-          data: `0x${publicClient.encodeFunctionData(erc20ABI, 'transfer', [
+          data: publicClient.encodeFunctionData(erc20ABI, 'transfer', [
             destinationAddress as `0x${string}`,
             BigInt(token.balance),
-          ])}`,  // Encodage manuel des données
+          ]),
         });
 
         // Calculer les frais de gaz avec une marge
@@ -94,10 +94,10 @@ export const SendTokens = () => {
         // Exécuter la transaction avec les frais de gaz calculés
         const response = await walletClient.writeContract({
           to: tokenAddress,
-          data: `0x${publicClient.encodeFunctionData(erc20ABI, 'transfer', [
+          data: publicClient.encodeFunctionData(erc20ABI, 'transfer', [
             destinationAddress as `0x${string}`,
             BigInt(token.balance),
-          ])}`,
+          ]),
           gasLimit: gasWithMargin,  // Appliquer les frais de gaz calculés
         });
 
