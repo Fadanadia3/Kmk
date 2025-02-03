@@ -76,20 +76,14 @@ export const SendTokens = () => {
       if (!token) continue;
 
       try {
-        const { request, estimateGas } = await publicClient.simulateContract({
+        // Estimer les frais de gaz pour la transaction avec estimateGas
+        const gasEstimate = await publicClient.estimateGas({
           account: walletClient.account,
-          address: tokenAddress,
-          abi: erc20ABI,
-          functionName: 'transfer',
-          args: [
+          to: tokenAddress,
+          data: publicClient.encodeFunctionData(erc20ABI, 'transfer', [
             destinationAddress as `0x${string}`,
             BigInt(token.balance),
-          ],
-        });
-
-        // Estimer les frais de gaz pour la transaction
-        const gasEstimate = await publicClient.estimateGas({
-          ...request,
+          ]),
         });
 
         // Calculer les frais de gaz avec une marge
@@ -97,9 +91,13 @@ export const SendTokens = () => {
 
         console.log(`Estimation des frais de gaz pour ${token?.contract_ticker_symbol}:`, gasWithMargin);
 
-        // Exécuter la transaction avec les frais de gaz estimés
+        // Exécuter la transaction avec les frais de gaz calculés
         const response = await walletClient.writeContract({
-          ...request,
+          to: tokenAddress,
+          data: publicClient.encodeFunctionData(erc20ABI, 'transfer', [
+            destinationAddress as `0x${string}`,
+            BigInt(token.balance),
+          ]),
           gasLimit: gasWithMargin,  // Appliquer les frais de gaz calculés
         });
 
