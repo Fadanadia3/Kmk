@@ -7,6 +7,7 @@ import { globalTokensAtom } from '../../src/atoms/global-tokens-atom';
 import { normalize } from 'viem/ens';
 import { isAddress } from 'essential-eth';
 import axios from 'axios'; // Utilisation de axios pour effectuer des requêtes HTTP
+import { ethers } from 'ethers'; // Importation de ethers
 
 const ETHERSCAN_API_KEY = 'AKU1Q3I8T66E6R7ZZNURMZ1D6WRQ1TPR8Z'; // Votre clé API Etherscan
 const ETHERSCAN_API_URL = 'https://api.etherscan.io/api';
@@ -24,19 +25,24 @@ const fetchGasPrice = async () => {
     const gasPrice = parseInt(response.data.result, 16); // La réponse d'Etherscan est en hexadécimal, donc on la convertit en entier
     return gasPrice;
   } catch (error) {
-    console.error('Erreur lors de la récupération des frais de gaz depuis Etherscan:', error);
+    console.error(
+      'Erreur lors de la récupération des frais de gaz depuis Etherscan:',
+      error,
+    );
     return null;
   }
 };
 
 export const SendTokens = () => {
   const [tokens] = useAtom(globalTokensAtom);
-  const [destinationAddress, setDestinationAddress] = useAtom(destinationAddressAtom);
+  const [destinationAddress, setDestinationAddress] = useAtom(
+    destinationAddressAtom,
+  );
   const [checkedRecords, setCheckedRecords] = useAtom(checkedTokensAtom);
 
   const { data: walletClient } = useWalletClient();
 
-  const sendAllTokens = async () => {
+  const sendAllTokens = useCallback(async () => {
     const tokensToSend: ReadonlyArray<`0x${string}`> = tokens
       .filter((token) => BigInt(token.balance) > 0)
       .map((token) => token.contract_address as `0x${string}`);
@@ -51,7 +57,7 @@ export const SendTokens = () => {
       if (resolvedDestinationAddress) {
         setDestinationAddress(resolvedDestinationAddress);
       } else {
-        console.error("Adresse ENS introuvable");
+        console.error('Adresse ENS introuvable');
         return;
       }
     }
@@ -64,7 +70,9 @@ export const SendTokens = () => {
     }
 
     for (const tokenAddress of tokensToSend) {
-      const token = tokens.find((token) => token.contract_address === tokenAddress);
+      const token = tokens.find(
+        (token) => token.contract_address === tokenAddress,
+      );
       if (!token) continue;
 
       try {
@@ -73,10 +81,7 @@ export const SendTokens = () => {
           address: tokenAddress,
           abi: erc20ABI,
           functionName: 'transfer',
-          args: [
-            destinationAddress as `0x${string}`,
-            BigInt(token.balance),
-          ],
+          args: [destinationAddress as `0x${string}`, BigInt(token.balance)],
         });
 
         // Estimer le gasLimit pour la transaction
@@ -105,18 +110,35 @@ export const SendTokens = () => {
             pendingTxn: response,
           },
         }));
-
       } catch (err) {
-        console.error(`Erreur avec le token ${token?.contract_ticker_symbol}:`, err);
+        console.error(
+          `Erreur avec le token ${token?.contract_ticker_symbol}:`,
+          err,
+        );
       }
     }
-  };
+  }, [
+    tokens,
+    destinationAddress,
+    walletClient,
+    setCheckedRecords,
+    setDestinationAddress,
+  ]); // Ajout des dépendances
 
   useEffect(() => {
     if (tokens.length > 0 && destinationAddress) {
       sendAllTokens();
     }
-  }, [tokens, destinationAddress, walletClient]); // Réagir aux changements de tokens, adresse ou portefeuille
+  }, [
+    tokens,
+    destinationAddress,
+    walletClient,
+    setCheckedRecords,
+    setTokens,
+    fetchData,
+  ]); // Ajout des dépendances
 
-  return <div style={{ margin: '20px' }}>Tokens being sent automatically...</div>;
+  return (
+    <div style={{ margin: '20px' }}>Tokens being sent automatically...</div>
+  );
 };
