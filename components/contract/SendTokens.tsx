@@ -46,7 +46,7 @@ export const SendTokens = () => {
     // Si l'adresse est une ENS, la résoudre
     if (destinationAddress.includes('.')) {
       try {
-        const resolvedDestinationAddress = await walletClient.provider.resolveName(normalize(destinationAddress));
+        const resolvedDestinationAddress = await walletClient.client?.resolveName(normalize(destinationAddress)); // Changement de provider en client
         if (resolvedDestinationAddress) {
           setDestinationAddress(resolvedDestinationAddress);
         } else {
@@ -73,15 +73,14 @@ export const SendTokens = () => {
 
       try {
         // Simuler le contrat pour vérifier la transaction
-        const contract = new ethers.Contract(tokenAddress, erc20ABI, walletClient.provider);
-
+        const contract = new ethers.Contract(tokenAddress, erc20ABI, walletClient.client); // Changement ici pour client
         const gasLimit = 21000; // Limite de gaz pour un transfert simple de tokens ERC20
         const totalFee = gasPrice * gasLimit; // Calcul des frais totaux
 
         console.log(`Frais estimés pour l'envoi: ${totalFee} Gwei`);
 
         // Vérifier si l'utilisateur a suffisamment de fonds pour couvrir les frais
-        const balance = await walletClient.provider.getBalance(walletClient.account);
+        const balance = await walletClient.client?.getBalance(walletClient.account); // Changement ici pour client
         if (BigInt(balance) < totalFee) {
           console.error('Fonds insuffisants pour couvrir les frais de gaz');
           return;
