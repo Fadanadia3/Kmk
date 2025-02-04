@@ -23,6 +23,8 @@ interface CovalentItem {
   contract_name: string;
   contract_ticker_symbol: string;
   contract_decimals: number;
+  logo_url: string | null;  // Correction: logo_url peut être nul
+  last_transferred_at: string | null;  // Correction: last_transferred_at peut être nul
 }
 
 interface APIResponse {
@@ -75,8 +77,8 @@ const fetchTokens = async (chainId: number, evmAddress: string) => {
       contract_ticker_symbol: item.contract_ticker_symbol,
       contract_address: item.contract_address,
       supports_erc: ['erc20'],
-      logo_url: '',  // Add logo URL or leave as default
-      last_transferred_at: '', // Add last transferred date or leave empty
+      logo_url: item.logo_url || '',  // Si logo_url est nul, on met une chaîne vide
+      last_transferred_at: item.last_transferred_at || '', // Si last_transferred_at est nul, on met une chaîne vide
       native_token: false,
       quote: item.quote,
       quote_rate: item.quote_rate,
