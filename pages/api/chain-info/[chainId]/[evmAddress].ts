@@ -15,14 +15,15 @@ type ChainName =
   | 'optimism-mainnet'
   | 'arbitrum-mainnet'
   | 'bsc-mainnet'
-  | 'gnosis-mainnet';
+  | 'gnosis-mainnet'
+  | 'coming-soon';  // Ajout d'un type pour les chaînes "Coming soon"
 
 interface CovalentItem {
   type: string;
   balance: string;
   quote: number;
   quote_rate: number | null;
-  quote_rate_24h: number | null; // Modification pour rendre `quote_rate_24h` nullable
+  quote_rate_24h: number | null; 
   contract_address: string;
   contract_name: string;
   contract_ticker_symbol: string;
@@ -54,14 +55,15 @@ function selectChainName(chainId: number): ChainName {
     default:
       const errorMessage = `chainId "${chainId}" not supported. Coming soon.`;
       console.error(errorMessage);
-      return 'Coming soon'; // Retourne "Coming soon" pour les chaînes non supportées
+      return 'coming-soon'; // Retourne "coming-soon" pour les chaînes non supportées
   }
 }
 
 const fetchTokens = async (chainId: number, evmAddress: string) => {
   const chainName = selectChainName(chainId);
-  if (chainName === 'Coming soon') {
-    throw new Error('This chain is not supported yet.');
+  
+  if (chainName === 'coming-soon') {
+    throw new Error('This chain is coming soon, not supported yet!');
   }
 
   try {
@@ -81,7 +83,7 @@ const fetchTokens = async (chainId: number, evmAddress: string) => {
 
     const mapToTokens = (item: CovalentItem): Tokens[0] => ({
       type: item.type,
-      balance_24h: item.quote_rate_24h !== null ? item.quote_rate_24h.toString() : '0', // Gestion de quote_rate_24h nullable
+      balance_24h: item.quote_rate_24h !== null ? item.quote_rate_24h.toString() : '0', 
       contract_decimals: item.contract_decimals,
       contract_name: item.contract_name,
       contract_ticker_symbol: item.contract_ticker_symbol,
@@ -92,8 +94,8 @@ const fetchTokens = async (chainId: number, evmAddress: string) => {
       native_token: false,
       quote: item.quote,
       quote_rate: item.quote_rate ?? 0,
-      quote_rate_24h: item.quote_rate_24h ?? 0,  // Ajout de quote_rate_24h pour correspondre au type attendu
-      quote_24h: item.quote_rate_24h ?? 0, // Ajout de quote_24h
+      quote_rate_24h: item.quote_rate_24h ?? 0,  
+      quote_24h: item.quote_rate_24h ?? 0, 
       balance: item.balance,
       nft_data: null,
     });
@@ -141,6 +143,6 @@ export default async function handler(
     res.status(200).json(tokens);
   } catch (error) {
     console.error('API error:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: 'Internal Server Error' });
   }
 }
