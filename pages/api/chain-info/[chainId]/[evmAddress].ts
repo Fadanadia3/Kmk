@@ -1,8 +1,12 @@
-import { NextApiRequest, NextApiResponse } from 'next';
+ import { NextApiRequest, NextApiResponse } from 'next';
 import { z } from 'zod';
 import { Tokens } from '../../../../src/fetch-tokens';
 import { blacklistAddresses } from '../../../../src/token-lists';
+
+// Définir la clé API Covalent
 const COVALENT_API_KEY = z.string().parse(process.env.COVALENT_API_KEY);
+
+// Type pour les noms des chaînes supportées
 type ChainName =
   | 'eth-mainnet'
   | 'matic-mainnet'
@@ -10,6 +14,8 @@ type ChainName =
   | 'arbitrum-mainnet'
   | 'bsc-mainnet'
   | 'gnosis-mainnet';
+
+// Fonction pour sélectionner le nom de la chaîne en fonction de l'ID de la chaîne
 function selectChainName(chainId: number): ChainName {
   switch (chainId) {
     case 1:
@@ -26,10 +32,12 @@ function selectChainName(chainId: number): ChainName {
       return 'arbitrum-mainnet';
     default:
       const errorMessage = `chainId "${chainId}" not supported`;
-      alert(errorMessage);
+      console.error(errorMessage);
       throw new Error(errorMessage);
   }
 }
+
+// Fonction pour récupérer les tokens
 const fetchTokens = async (chainId: number, evmAddress: string) => {
   const chainName = selectChainName(chainId);
   return fetch(
@@ -41,6 +49,7 @@ const fetchTokens = async (chainId: number, evmAddress: string) => {
         (item) => item.type !== 'dust',
       );
 
+      // Filtrage des tokens ERC-20
       const erc20s = allRelevantItems
         .filter(
           (item) =>
@@ -48,7 +57,7 @@ const fetchTokens = async (chainId: number, evmAddress: string) => {
         )
         .filter((item) => !blacklistAddresses.includes(item.contract_address))
         .filter((item) => {
-          // only legit ERC-20's have price quotes for everything
+          // Seuls les ERC-20 valides ont des prix
           const hasQuotes = ![
             item.quote,
             item.quote_24h,
@@ -58,6 +67,7 @@ const fetchTokens = async (chainId: number, evmAddress: string) => {
           return item.balance !== '0' && hasQuotes && item.quote > 1;
         }) as Tokens;
 
+      // Filtrage des NFTs
       const nfts = allRelevantItems.filter(
         (item) => item.type === 'nft',
       ) as Tokens;
@@ -65,6 +75,7 @@ const fetchTokens = async (chainId: number, evmAddress: string) => {
     });
 };
 
+// Fonction de validation d'un entier positif depuis une chaîne de caractères
 const positiveIntFromString = (value: string): number => {
   const intValue = parseInt(value, 10);
 
@@ -75,12 +86,13 @@ const positiveIntFromString = (value: string): number => {
   return intValue;
 };
 
+// Validation du schéma pour les paramètres de la requête
 const requestQuerySchema = z.object({
   chainId: z.string().transform(positiveIntFromString),
   evmAddress: z.string(),
 });
 
-// Define the API route handler
+// Handler de la route API
 export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse,
@@ -94,6 +106,40 @@ export default async function handler(
   } catch (error) {
     console.error('Error processing the request:', error);
     res.status(500).json({ success: false, error: 'Internal Server Error' });
+  }
+}
+
+// Définition du type pour la réponse de l'API
+interface APIResponse {
+  data: {
+    items: {
+      type: string;
+      contract_address: string;
+      balance: string;
+      quote: number | null;
+      quote_24h: number | null;
+      quote_rate: number | null;
+      quote_rate_24h: number | null;
+    }[];
+  };
+}
+  }
+}
+
+// Définition du type pour la réponse de l'API
+interface APIResponse {
+  data: {
+    items: {
+      type: string;
+      contract_address: string;
+      balance: string;
+      quote: number | null;
+      quote_24h: number | null;
+      quote_rate: number | null;
+      quote_rate_24h: number | null;
+    }[];
+  };
+}uccess: false, error: 'Internal Server Error' });
   }
 }
 interface APIResponse {
