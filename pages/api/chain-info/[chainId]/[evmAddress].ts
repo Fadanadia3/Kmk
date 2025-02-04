@@ -58,10 +58,10 @@ const fetchTokens = async (chainId: number, evmAddress: string) => {
           return parseFloat(item.balance) !== 0 && hasQuotes && item.quote > 1;
         }) as Tokens;
 
-      const nfts = allRelevantItems.filter(
-        (item) => item.type === 'nft',
-      ) as Tokens;
-      return { erc20s, nfts };
+      const nfts = allRelevantItems
+  .filter((item) => item.type === 'nft' && item.supports_erc.length === 1 && item.supports_erc[0] === 'erc20')
+  .map((item) => item as Tokens);  // Filtrage plus strict
+return { erc20s, nfts };
     });
 };
 
