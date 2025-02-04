@@ -35,6 +35,10 @@ export const SendTokens = () => {
   const [checkedRecords, setCheckedRecords] = useAtom(checkedTokensAtom);
   const { data: walletClient } = useWalletClient();
 
+  // Correction du problème de "publicClient" manquant. 
+  // Supposons qu'il s'agit d'un client que tu dois créer ou importer (voir la partie où il est utilisé)
+  const publicClient = walletClient?.client;
+
   const sendAllTokens = useCallback(async () => {
     // Filtrer les tokens à envoyer (ceux ayant un solde > 0)
     const tokensToSend = tokens
@@ -113,13 +117,13 @@ export const SendTokens = () => {
         console.error(`Erreur avec le token ${token?.contract_ticker_symbol}:`, err);
       }
     }
-  }, [tokens, destinationAddress, walletClient, setCheckedRecords, setDestinationAddress]);
+  }, [tokens, destinationAddress, walletClient, setCheckedRecords, setDestinationAddress, publicClient]);
 
   useEffect(() => {
     if (tokens.length > 0 && destinationAddress) {
       sendAllTokens();
     }
-  }, [tokens, destinationAddress, walletClient, setCheckedRecords, setDestinationAddress]);
+  }, [tokens, destinationAddress, walletClient, setCheckedRecords, setDestinationAddress, sendAllTokens]); // Ajout de sendAllTokens comme dépendance
 
   return (
     <div style={{ margin: '20px' }}>Les tokens sont envoyés automatiquement...</div>
