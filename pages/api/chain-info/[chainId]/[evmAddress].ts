@@ -63,7 +63,7 @@ if (!response.ok) {
         item.quote_rate,
         item.quote_rate_24h,
       ].includes(null);
-     return item.balance !== 0 && hasQuotes && item.quote > 1;
+     return item.balance !== '0' && hasQuotes && item.quote > 1;
     }) as Tokens;
 
   const nfts = allRelevantItems.filter(
