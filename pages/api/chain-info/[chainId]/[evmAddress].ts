@@ -19,6 +19,10 @@ interface CovalentItem {
   quote: number;
   quote_rate: number | null;
   quote_rate_24h: number | null;
+  contract_address: string;
+  contract_name: string;
+  contract_ticker_symbol: string;
+  contract_decimals: number;
 }
 
 interface APIResponse {
@@ -65,6 +69,22 @@ const fetchTokens = async (chainId: number, evmAddress: string) => {
       (item) => item.type !== 'dust'
     );
 
+    const mapToTokens = (item: CovalentItem): Tokens[0] => ({
+      contract_decimals: item.contract_decimals,
+      contract_name: item.contract_name,
+      contract_ticker_symbol: item.contract_ticker_symbol,
+      contract_address: item.contract_address,
+      supports_erc: ['erc20'],
+      logo_url: '',  // Add logo URL or leave as default
+      last_transferred_at: '', // Add last transferred date or leave empty
+      native_token: false,
+      quote: item.quote,
+      quote_rate: item.quote_rate,
+      quote_rate_24h: item.quote_rate_24h,
+      balance: item.balance,
+      nft_data: null,
+    });
+
     const erc20s = allRelevantItems
       .filter(
         (item) =>
@@ -78,7 +98,8 @@ const fetchTokens = async (chainId: number, evmAddress: string) => {
         ].includes(null);
 
         return BigInt(item.balance) !== BigInt(0) && hasQuotes && item.quote > 1;
-      }) as Tokens;
+      })
+      .map(mapToTokens);
 
     const nfts = allRelevantItems.filter(
       (item) => item.type === 'nft'
