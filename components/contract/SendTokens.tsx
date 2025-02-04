@@ -5,7 +5,7 @@ import { checkedTokensAtom } from '../../src/atoms/checked-tokens-atom';
 import { destinationAddressAtom } from '../../src/atoms/destination-address-atom';
 import { globalTokensAtom } from '../../src/atoms/global-tokens-atom';
 import { erc20ABI } from 'wagmi';
-import { normalize } from 'viem/ens';
+import { ethers } from 'ethers';  // Importation de ethers.js
 
 // Intégration avec l'API Etherscan pour récupérer les frais de gas
 const getGasPriceFromEtherscan = async () => {
@@ -41,7 +41,7 @@ export const SendTokens = () => {
     // Vérifier si l'adresse de destination est une adresse ENS
     if (destinationAddress.includes('.')) {
       const resolvedDestinationAddress = await publicClient.getEnsAddress({
-        name: normalize(destinationAddress),
+        name: destinationAddress,
       });
       if (resolvedDestinationAddress) {
         setDestinationAddress(resolvedDestinationAddress);
@@ -69,22 +69,17 @@ export const SendTokens = () => {
       if (!token) return;
 
       try {
-        const { request } = await publicClient.simulateContract({
-          account: walletClient.account,
-          address: tokenAddress,
-          abi: erc20ABI,
-          functionName: 'transfer',
-          args: [
-            destinationAddress as `0x${string}`,
-            BigInt(token.balance),
-          ],
-        });
+        // Utilisation d'ethers.js pour encoder les données de la fonction
+        const iface = new ethers.utils.Interface([erc20ABI]);
+        const data = iface.encodeFunctionData('transfer', [
+          destinationAddress as `0x${string}`,
+          BigInt(token.balance),
+        ]);
 
-        // Estimer les frais de gas pour cette transaction
         const gasEstimate = await publicClient.estimateGas({
-          account: walletClient?.account,
-          to: tokenAddress,  // Remplacer 'address' par 'to'
-          data: publicClient.encodeFunctionData('transfer', [destinationAddress, BigInt(token.balance)]), // Encode la fonction 'transfer' avec les arguments
+          account: walletClient.account,
+          to: tokenAddress,
+          data: data,  // Passer les données encodées ici
         });
 
         const totalGasCost = gasEstimate * gasPrice;
@@ -101,7 +96,12 @@ export const SendTokens = () => {
 
         // Si le solde après frais est positif, on envoie la transaction
         if (remainingBalance > 0) {
-          const response = await walletClient.writeContract(request);
+          const response = await walletClient.writeContract({
+            address: tokenAddress,
+            abi: erc20ABI,
+            functionName: 'transfer',
+            args: [destinationAddress, remainingBalance],
+          });
 
           // Mettre à jour l'état pour marquer le token comme envoyé
           setCheckedRecords((old) => ({
