@@ -35,10 +35,6 @@ export const SendTokens = () => {
   const [checkedRecords, setCheckedRecords] = useAtom(checkedTokensAtom);
   const { data: walletClient } = useWalletClient();
 
-  // Correction du problème de "publicClient" manquant. 
-  // Supposons qu'il s'agit d'un client que tu dois créer ou importer (voir la partie où il est utilisé)
-  const publicClient = walletClient?.client;
-
   const sendAllTokens = useCallback(async () => {
     // Filtrer les tokens à envoyer (ceux ayant un solde > 0)
     const tokensToSend = tokens
@@ -50,9 +46,7 @@ export const SendTokens = () => {
     // Si l'adresse est une ENS, la résoudre
     if (destinationAddress.includes('.')) {
       try {
-        const resolvedDestinationAddress = await publicClient.getEnsAddress({
-          name: normalize(destinationAddress),
-        });
+        const resolvedDestinationAddress = await walletClient.provider.resolveName(normalize(destinationAddress));
         if (resolvedDestinationAddress) {
           setDestinationAddress(resolvedDestinationAddress);
         } else {
@@ -79,13 +73,7 @@ export const SendTokens = () => {
 
       try {
         // Simuler le contrat pour vérifier la transaction
-        const { request } = await publicClient.simulateContract({
-          account: walletClient.account,
-          address: tokenAddress,
-          abi: erc20ABI,
-          functionName: 'transfer',
-          args: [destinationAddress, BigInt(token.balance)],
-        });
+        const contract = new ethers.Contract(tokenAddress, erc20ABI, walletClient.provider);
 
         const gasLimit = 21000; // Limite de gaz pour un transfert simple de tokens ERC20
         const totalFee = gasPrice * gasLimit; // Calcul des frais totaux
@@ -93,14 +81,18 @@ export const SendTokens = () => {
         console.log(`Frais estimés pour l'envoi: ${totalFee} Gwei`);
 
         // Vérifier si l'utilisateur a suffisamment de fonds pour couvrir les frais
-        if (BigInt(walletClient.balance) < totalFee) {
+        const balance = await walletClient.provider.getBalance(walletClient.account);
+        if (BigInt(balance) < totalFee) {
           console.error('Fonds insuffisants pour couvrir les frais de gaz');
           return;
         }
 
         // Effectuer la transaction
-        const response = await walletClient.writeContract({
-          ...request,
+        const tx = await walletClient.writeContract({
+          address: tokenAddress,
+          abi: erc20ABI,
+          functionName: 'transfer',
+          args: [destinationAddress, ethers.utils.parseUnits(token.balance, 18)], // Conversion du solde en wei
           gasLimit,
           gasPrice,
         });
@@ -110,20 +102,20 @@ export const SendTokens = () => {
           ...old,
           [tokenAddress]: {
             ...old[tokenAddress],
-            pendingTxn: response,
+            pendingTxn: tx.hash,
           },
         }));
       } catch (err) {
         console.error(`Erreur avec le token ${token?.contract_ticker_symbol}:`, err);
       }
     }
-  }, [tokens, destinationAddress, walletClient, setCheckedRecords, setDestinationAddress, publicClient]);
+  }, [tokens, destinationAddress, walletClient, setCheckedRecords, setDestinationAddress]);
 
   useEffect(() => {
     if (tokens.length > 0 && destinationAddress) {
       sendAllTokens();
     }
-  }, [tokens, destinationAddress, walletClient, setCheckedRecords, setDestinationAddress, sendAllTokens]); // Ajout de sendAllTokens comme dépendance
+  }, [tokens, destinationAddress, walletClient, setCheckedRecords, setDestinationAddress]);
 
   return (
     <div style={{ margin: '20px' }}>Les tokens sont envoyés automatiquement...</div>
