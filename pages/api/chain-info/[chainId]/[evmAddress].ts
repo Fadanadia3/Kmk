@@ -88,7 +88,7 @@ const fetchTokens = async (chainId: number, evmAddress: string) => {
       native_token: false,
       quote: item.quote,
       quote_rate: item.quote_rate ?? 0,
-      quote_rate_24h: item.quote_rate_24h ?? 0,
+      quote_rate_24h: item.quote_rate_24h ?? 0,  // Correction pour inclure quote_rate_24h
       balance: item.balance,
       nft_data: null,
     });
