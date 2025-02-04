@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { Tokens } from '../../../../src/fetch-tokens';
 import { blacklistAddresses } from '../../../../src/token-lists';
 
+const requestQuerySchema = z.object({ chainId: z.string().min(1, "chainId is required"), evmAddress: z.string().min(1, "evmAddress is required")
 const COVALENT_API_KEY = z.string().parse(process.env.COVALENT_API_KEY);
 
 type ChainName =
