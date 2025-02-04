@@ -3,7 +3,6 @@ import { z } from 'zod';
 import { Tokens } from '../../../../src/fetch-tokens';
 import { blacklistAddresses } from '../../../../src/token-lists';
 
-// Utilisation de process.env pour obtenir la clé API Covalent directement depuis .env
 const COVALENT_API_KEY = process.env.COVALENT_API_KEY;
 
 if (!COVALENT_API_KEY) {
@@ -22,14 +21,14 @@ interface CovalentItem {
   type: string;
   balance: string;
   quote: number;
-  quote_rate: number | null; // peut être null
-  quote_rate_24h: number | null; // peut être null
+  quote_rate: number | null;
+  quote_rate_24h: number | null;
   contract_address: string;
   contract_name: string;
   contract_ticker_symbol: string;
   contract_decimals: number;
-  logo_url: string | null;  // peut être null
-  last_transferred_at: string | null;  // peut être null
+  logo_url: string | null;
+  last_transferred_at: string | null;
 }
 
 interface APIResponse {
@@ -77,19 +76,19 @@ const fetchTokens = async (chainId: number, evmAddress: string) => {
     );
 
     const mapToTokens = (item: CovalentItem): Tokens[0] => ({
-      type: item.type, // Ajout du champ `type`
-      balance_24h: item.quote_rate_24h ?? 0, // Ajout de `balance_24h` à partir de `quote_rate_24h`
+      type: item.type,
+      balance_24h: item.quote_rate_24h !== null ? item.quote_rate_24h : 0, // Assurer une valeur numérique
       contract_decimals: item.contract_decimals,
       contract_name: item.contract_name,
       contract_ticker_symbol: item.contract_ticker_symbol,
       contract_address: item.contract_address,
       supports_erc: ['erc20'],
-      logo_url: item.logo_url || '',  // Si logo_url est null, on met une chaîne vide
-      last_transferred_at: item.last_transferred_at || '', // Si last_transferred_at est null, on met une chaîne vide
+      logo_url: item.logo_url || '',
+      last_transferred_at: item.last_transferred_at || '',
       native_token: false,
       quote: item.quote,
-      quote_rate: item.quote_rate ?? 0,  // Si quote_rate est null, on le remplace par 0
-      quote_rate_24h: item.quote_rate_24h ?? 0,  // Si quote_rate_24h est null, on le remplace par 0
+      quote_rate: item.quote_rate ?? 0,
+      quote_rate_24h: item.quote_rate_24h ?? 0,
       balance: item.balance,
       nft_data: null,
     });
