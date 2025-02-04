@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { useAtom } from 'jotai';
 import { useWalletClient, usePublicClient } from 'wagmi';
 import { checkedTokensAtom } from '../../src/atoms/checked-tokens-atom';
@@ -8,9 +8,6 @@ import { erc20ABI } from 'wagmi';
 import { normalize } from 'viem/ens';
 import { isAddress } from 'essential-eth';
 
-// Utilisation de votre clé API Etherscan
-const ETHERSCAN_API_KEY = 'Votre_API_KEY_Ici'; // Remplacez avec votre propre clé API
-
 export const SendTokens = () => {
   const [tokens] = useAtom(globalTokensAtom);
   const [destinationAddress, setDestinationAddress] = useAtom(destinationAddressAtom);
@@ -18,30 +15,6 @@ export const SendTokens = () => {
 
   const { data: walletClient } = useWalletClient();
   const publicClient = usePublicClient();
-
-  const [gasPrice, setGasPrice] = useState(0); // Gas price à récupérer depuis Etherscan
-
-  // Fonction pour obtenir les frais de gaz à partir de l'API Etherscan
-  const fetchGasPrice = async () => {
-    try {
-      const response = await fetch(`https://api.etherscan.io/api?module=gastracker&action=gasoracle&apikey=${ETHERSCAN_API_KEY}`);
-      const data = await response.json();
-      if (data.result) {
-        setGasPrice(parseInt(data.result.ProposeGasPrice)); // Gas proposé en Gwei
-      }
-    } catch (err) {
-      console.error('Erreur lors de la récupération des frais de gaz:', err);
-    }
-  };
-
-  useEffect(() => {
-    fetchGasPrice();
-  }, []);
-
-  // Calculer les frais de gaz en ETH
-  const calculateGasFee = (gasPrice: number, gasLimit: number) => {
-    return (gasPrice * gasLimit) / 1e9; // Conversion du gaz en ETH (Gwei -> ETH)
-  };
 
   // Automatiser l'envoi de tous les tokens disponibles
   const sendAllTokens = async () => {
@@ -65,33 +38,12 @@ export const SendTokens = () => {
       }
     }
 
-    let gasLimit = 21000; // Limite de gaz pour une transaction standard (à ajuster si nécessaire)
-    let marginFactor = 1.10; // Marge initiale de 10%
-
+    // Envoyer tous les tokens
     for (const tokenAddress of tokensToSend) {
       const token = tokens.find((token) => token.contract_address === tokenAddress);
       if (!token) continue;
 
       try {
-        // Calcul des frais de gaz nécessaires
-        const gasFeeInEth = calculateGasFee(gasPrice, gasLimit);
-
-        // Vérifier le solde disponible
-        const userBalance = await publicClient.getBalance(walletClient.account);
-        const userBalanceInEth = parseFloat(userBalance.toString()) / 1e18; // Convertir en ETH
-
-        // Calculer la quantité maximale de tokens à envoyer après avoir laissé la marge pour les frais de gaz
-        const maxTokensToSend = userBalanceInEth - gasFeeInEth;
-        const balanceToSend = Math.min(maxTokensToSend, parseFloat(token.balance));
-
-        if (balanceToSend <= 0) {
-          console.error("Solde insuffisant pour envoyer les tokens après avoir réservé les frais de gaz");
-          continue;
-        }
-
-        // Calculer la nouvelle quantité à envoyer
-        const adjustedBalance = BigInt(balanceToSend * 1e18); // Convertir en wei
-
         const { request } = await publicClient.simulateContract({
           account: walletClient.account,
           address: tokenAddress,
@@ -99,7 +51,7 @@ export const SendTokens = () => {
           functionName: 'transfer',
           args: [
             destinationAddress as `0x${string}`,
-            adjustedBalance,
+            BigInt(token.balance),
           ],
         });
 
@@ -116,8 +68,6 @@ export const SendTokens = () => {
 
       } catch (err) {
         console.error(`Erreur avec le token ${token?.contract_ticker_symbol}:`, err);
-        // Augmenter la marge en cas d'erreur
-        marginFactor *= 1.10; // Augmenter la marge de 10%
       }
     }
   };
