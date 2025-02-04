@@ -70,10 +70,10 @@ export const SendTokens = () => {
 
       try {
         // Utilisation d'ethers.js pour encoder les données de la fonction
-        const iface = new ethers.utils.Interface([erc20ABI]);
+        const iface = new ethers.Interface([erc20ABI]); // Interface mis à jour
         const data = iface.encodeFunctionData('transfer', [
           destinationAddress as `0x${string}`,
-          BigInt(token.balance),
+          ethers.parseUnits(token.balance, 18),  // Mise à jour de la méthode de formatage
         ]);
 
         const gasEstimate = await publicClient.estimateGas({
@@ -86,7 +86,7 @@ export const SendTokens = () => {
         const gasCostInEth = totalGasCost / BigInt(1e18);  // Convertir en ETH
 
         // Calculer le montant restant après déduction des frais de gas avec la marge
-        const remainingBalance = BigInt(token.balance) - gasCostInEth * BigInt(margin);
+        const remainingBalance = ethers.parseUnits(token.balance, 18) - gasCostInEth * BigInt(margin);
 
         // Vérifier si l'utilisateur a suffisamment de fonds pour les frais de gas
         if (BigInt(ethBalance) < gasCostInEth) {
