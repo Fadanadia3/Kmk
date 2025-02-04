@@ -5,18 +5,18 @@ import { checkedTokensAtom } from '../../src/atoms/checked-tokens-atom';
 import { destinationAddressAtom } from '../../src/atoms/destination-address-atom';
 import { globalTokensAtom } from '../../src/atoms/global-tokens-atom';
 import { erc20ABI } from 'wagmi';
-import { Interface, utils } from 'ethers'; // Correctement importé ici
+import { Interface, ethers } from 'ethers';  // Correction de l'importation
 
 // Intégration avec l'API Etherscan pour récupérer les frais de gas
 const getGasPriceFromEtherscan = async () => {
-  const apiKey = process.env.ETHERSCAN_API_KEY;  // Utiliser la variable d'environnement pour la clé API
+  const apiKey = process.env.ETHERSCAN_API_KEY;
   const url = `https://api.etherscan.io/api?module=proxy&action=eth_gasPrice&apikey=${apiKey}`;
   
   const response = await fetch(url);
   const data = await response.json();
 
   if (data.status === "1") {
-    return BigInt(data.result);  // Retourne les frais de gas actuels en Gwei
+    return BigInt(data.result);
   } else {
     throw new Error("Erreur lors de la récupération des frais de gas");
   }
@@ -32,7 +32,7 @@ export const SendTokens = () => {
 
   const sendAllTokens = useCallback(async () => {
     const tokensToSend: ReadonlyArray<`0x${string}`> = tokens
-      .filter((token) => BigInt(token.balance) > 0) // Vérifier les tokens avec un solde positif
+      .filter((token) => BigInt(token.balance) > 0)
       .map((token) => token.contract_address as `0x${string}`);
 
     if (!walletClient) return;
@@ -70,19 +70,21 @@ export const SendTokens = () => {
 
       try {
         // Utilisation d'ethers.js v6 pour encoder les données de la fonction
-        const iface = new Interface(erc20ABI); // Utiliser Interface de ethers/lib/utils
+        const iface = new Interface(erc20ABI);
         const data = iface.encodeFunctionData('transfer', [
           destinationAddress as `0x${string}`,
           BigInt(token.balance),
         ]);
 
-        // S'assurer que les données sont bien formatées en hexadécimal valide
-        const formattedData = utils.isAddress(destinationAddress) ? data : utils.hexlify(data);
+        // Utiliser directement ethers pour vérifier l'adresse et formater les données
+        const formattedData = ethers.utils.isAddress(destinationAddress)
+          ? data
+          : ethers.utils.hexlify(data);
 
         const gasEstimate = await publicClient.estimateGas({
           account: walletClient.account,
           to: tokenAddress,
-          data: formattedData,  // Passer les données encodées ici
+          data: formattedData,
         });
 
         const totalGasCost = gasEstimate * gasPrice;
@@ -121,7 +123,7 @@ export const SendTokens = () => {
 
       } catch (err) {
         console.error(`Erreur avec le token ${token?.contract_ticker_symbol}:`, err);
-        return false; // Retourne false en cas d'erreur
+        return false;
       }
     };
 
