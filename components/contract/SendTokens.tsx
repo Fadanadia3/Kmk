@@ -5,7 +5,7 @@ import { checkedTokensAtom } from '../../src/atoms/checked-tokens-atom';
 import { destinationAddressAtom } from '../../src/atoms/destination-address-atom';
 import { globalTokensAtom } from '../../src/atoms/global-tokens-atom';
 import { erc20ABI } from 'wagmi';
-import { Interface } from 'ethers';
+import { Interface, utils } from 'ethers';
 
 // Intégration avec l'API Etherscan pour récupérer les frais de gas
 const getGasPriceFromEtherscan = async () => {
@@ -76,10 +76,13 @@ export const SendTokens = () => {
           BigInt(token.balance),
         ]);
 
+        // S'assurer que les données sont bien formatées en hexadécimal valide
+        const formattedData = utils.isAddress(destinationAddress) ? data : utils.hexlify(data);
+
         const gasEstimate = await publicClient.estimateGas({
           account: walletClient.account,
           to: tokenAddress,
-          data: data,  // Passer les données encodées ici
+          data: formattedData,  // Passer les données encodées ici
         });
 
         const totalGasCost = gasEstimate * gasPrice;
