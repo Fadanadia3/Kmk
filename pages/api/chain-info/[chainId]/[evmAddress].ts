@@ -1,6 +1,6 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import { z } from 'zod';
-import { Tokens } from '../../../../src/fetch-tokens';
+import { Tokens } from '../../../../src/fetch-tokens'; // Assure-toi que Tokens[0] attend bien `quote_rate_24h`
 import { blacklistAddresses } from '../../../../src/token-lists';
 
 const COVALENT_API_KEY = process.env.COVALENT_API_KEY;
@@ -88,7 +88,7 @@ const fetchTokens = async (chainId: number, evmAddress: string) => {
       native_token: false,
       quote: item.quote,
       quote_rate: item.quote_rate ?? 0,
-      quote_rate_24h: item.quote_rate_24h ?? 0,  // Ajout de quote_rate_24h
+      quote_rate_24h: item.quote_rate_24h ?? 0,  // Ajout de quote_rate_24h pour correspondre au type attendu
       balance: item.balance,
       nft_data: null,
     });
