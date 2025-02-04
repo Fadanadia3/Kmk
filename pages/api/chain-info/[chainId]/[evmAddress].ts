@@ -3,7 +3,12 @@ import { z } from 'zod';
 import { Tokens } from '../../../../src/fetch-tokens';
 import { blacklistAddresses } from '../../../../src/token-lists';
 
-const COVALENT_API_KEY = z.string().parse(process.env.COVALENT_API_KEY);
+// Utilisation de process.env pour obtenir la clé API Covalent directement depuis .env
+const COVALENT_API_KEY = process.env.COVALENT_API_KEY;
+
+if (!COVALENT_API_KEY) {
+  throw new Error('COVALENT_API_KEY is not defined in the environment variables');
+}
 
 type ChainName =
   | 'eth-mainnet'
@@ -72,6 +77,8 @@ const fetchTokens = async (chainId: number, evmAddress: string) => {
     );
 
     const mapToTokens = (item: CovalentItem): Tokens[0] => ({
+      type: item.type, // Ajout du champ `type`
+      balance_24h: item.quote_rate_24h ?? 0, // Ajout de `balance_24h` à partir de `quote_rate_24h`
       contract_decimals: item.contract_decimals,
       contract_name: item.contract_name,
       contract_ticker_symbol: item.contract_ticker_symbol,
