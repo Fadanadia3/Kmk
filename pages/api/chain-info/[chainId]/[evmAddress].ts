@@ -13,6 +13,20 @@ type ChainName =
   | 'bsc-mainnet'
   | 'gnosis-mainnet';
 
+interface CovalentItem {
+  type: string;
+  balance: string;
+  quote: number;
+  quote_rate: number | null;
+  quote_rate_24h: number | null;
+}
+
+interface APIResponse {
+  data: {
+    items: CovalentItem[];
+  };
+}
+
 function selectChainName(chainId: number): ChainName {
   switch (chainId) {
     case 1:
@@ -58,7 +72,7 @@ const fetchTokens = async (chainId: number, evmAddress: string) => {
       )
       .filter((item) => !blacklistAddresses.includes(item.contract_address))
       .filter((item) => {
-const hasQuotes = ![
+        const hasQuotes = ![
           item.quote_rate,
           item.quote_rate_24h,
         ].includes(null);
