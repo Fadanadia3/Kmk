@@ -39,6 +39,8 @@ interface APIResponse {
 }
 
 function selectChainName(chainId: number): ChainName {
+  console.log(`Received chainId: ${chainId}`);  // Log pour voir la valeur du chainId
+
   switch (chainId) {
     case 1:
       return 'eth-mainnet';
