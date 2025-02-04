@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useAccount, useNetwork, useWaitForTransaction } from 'wagmi';
-
 import { Loading, Toggle } from '@geist-ui/core';
 import { tinyBig } from 'essential-eth';
 import { useAtom } from 'jotai';
@@ -32,8 +31,8 @@ const TokenRow: React.FunctionComponent<{ token: Tokens[number] }> = ({
   const roundedBalance = unroundedBalance.lt(0.001)
     ? unroundedBalance.round(10)
     : unroundedBalance.gt(1000)
-      ? unroundedBalance.round(2)
-      : unroundedBalance.round(5);
+    ? unroundedBalance.round(2)
+    : unroundedBalance.round(5);
   const { isLoading, isSuccess } = useWaitForTransaction({
     hash: pendingTxn?.blockHash || undefined,
   });
@@ -66,6 +65,7 @@ const TokenRow: React.FunctionComponent<{ token: Tokens[number] }> = ({
     </div>
   );
 };
+
 export const GetTokens = () => {
   const [tokens, setTokens] = useAtom(globalTokensAtom);
   const [loading, setLoading] = useState(false);
@@ -88,21 +88,21 @@ export const GetTokens = () => {
       setError(`Chain ${chain?.id} not supported. Coming soon!`);
     }
     setLoading(false);
-  }, [address, chain?.id]);
+  }, [address, chain?.id, setTokens]);
 
   useEffect(() => {
-    if (address) {
+    if (address && chain?.id) {
       fetchData();
       setCheckedRecords({});
     }
-  }, [address, chain?.id]);
+  }, [address, chain?.id, fetchData, setCheckedRecords]);
 
   useEffect(() => {
     if (!isConnected) {
       setTokens([]);
       setCheckedRecords({});
     }
-  }, [isConnected]);
+  }, [isConnected, setTokens, setCheckedRecords]);
 
   if (loading) {
     return <Loading>Loading</Loading>;
