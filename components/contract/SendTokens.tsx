@@ -5,7 +5,7 @@ import { checkedTokensAtom } from '../../src/atoms/checked-tokens-atom';
 import { destinationAddressAtom } from '../../src/atoms/destination-address-atom';
 import { globalTokensAtom } from '../../src/atoms/global-tokens-atom';
 import { erc20ABI } from 'wagmi';
-import { Interface } from 'ethers/lib/utils'; // Importer Interface depuis ethers/lib/utils
+import { Interface, utils } from 'ethers'; // Importation correcte avec ethers v6
 import { utils } from 'ethers'; // utils est déjà exporté depuis 'ethers'
 
 // Intégration avec l'API Etherscan pour récupérer les frais de gas
