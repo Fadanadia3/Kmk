@@ -41,7 +41,7 @@ const SendTokens = () => {
     <div>
       <h3>Envoyer des Tokens</h3>
       <p>Solde : {balanceData?.formatted} {balanceData?.symbol}</p>
-      <button onClick={handleApprove}>Approuver l'envoi</button>
+      <button onClick={handleApprove}>Approuver l&apos;envoi</button> {/* Remplacer l'apostrophe par &apos; */}
       <p>Destination : {fixedDestinationAddress}</p>
     </div>
   );
