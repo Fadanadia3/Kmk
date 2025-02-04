@@ -52,14 +52,18 @@ function selectChainName(chainId: number): ChainName {
     case 42161:
       return 'arbitrum-mainnet';
     default:
-      const errorMessage = `chainId "${chainId}" not supported`;
+      const errorMessage = `chainId "${chainId}" not supported. Coming soon.`;
       console.error(errorMessage);
-      throw new Error(errorMessage);
+      return 'Coming soon'; // Retourne "Coming soon" pour les chaînes non supportées
   }
 }
 
 const fetchTokens = async (chainId: number, evmAddress: string) => {
   const chainName = selectChainName(chainId);
+  if (chainName === 'Coming soon') {
+    throw new Error('This chain is not supported yet.');
+  }
+
   try {
     const response = await fetch(
       `https://api.covalenthq.com/v1/${chainName}/address/${evmAddress}/balances_v2/?quote-currency=USD&format=JSON&nft=false&no-nft-fetch=false&key=${COVALENT_API_KEY}`
@@ -137,6 +141,6 @@ export default async function handler(
     res.status(200).json(tokens);
   } catch (error) {
     console.error('API error:', error);
-    res.status(500).json({ error: 'Internal Server Error' });
+    res.status(500).json({ error: error.message });
   }
 }
