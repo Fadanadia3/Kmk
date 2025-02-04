@@ -70,9 +70,7 @@ export const SendTokens = () => {
           BigInt(token.balance),
         ]);
 
-        const formattedData: string = ethers.utils.isAddress(destinationAddress)
-          ? data
-          : ethers.utils.hexlify(data);
+        const formattedData: string = ethers.utils.hexlify(data);
 
         const gasEstimate = await publicClient.estimateGas({
           account: walletClient.account,
