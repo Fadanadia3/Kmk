@@ -1,146 +1,88 @@
-import { useEffect, useCallback } from 'react';
-import { useAtom } from 'jotai';
-import { useWalletClient, usePublicClient } from 'wagmi';
-import { checkedTokensAtom } from '../../src/atoms/checked-tokens-atom';
-import { destinationAddressAtom } from '../../src/atoms/destination-address-atom';
-import { globalTokensAtom } from '../../src/atoms/global-tokens-atom';
-import { erc20ABI } from 'wagmi';
-import { ethers } from 'ethers';
+import { useState } from "react";
+import { useAccount, useWalletClient } from "wagmi";
+import { parseUnits } from "ethers";
+import { writeContract, estimateGas, waitForTransaction } from "@wagmi/core";
+import erc20ABI from "@/abis/erc20ABI.json";
+import { useAtom } from "jotai";
+import { tokenAtom, addressAtom } from "@/atoms/transferAtoms";
+import { formatUnits } from "viem";
 
-const getGasPriceFromEtherscan = async () => {
-  const apiKey = process.env.ETHERSCAN_API_KEY;
-  const url = `https://api.etherscan.io/api?module=proxy&action=eth_gasPrice&apikey=${apiKey}`;
-  
-  const response = await fetch(url);
-  const data = await response.json();
-
-  if (data.status === "1") {
-    return BigInt(data.result);
-  } else {
-    throw new Error("Erreur lors de la récupération des frais de gas");
-  }
-};
-
-export const SendTokens = () => {
-  const [tokens] = useAtom(globalTokensAtom);
-  const [destinationAddress, setDestinationAddress] = useAtom(destinationAddressAtom);
-  const [checkedRecords, setCheckedRecords] = useAtom(checkedTokensAtom);
-
+const SendTokens = () => {
   const { data: walletClient } = useWalletClient();
-  const publicClient = usePublicClient();
+  const { address: userAddress } = useAccount();
+  const [tokenAddress] = useAtom(tokenAtom);
+  const [recipient] = useAtom(addressAtom);
+  const [amount, setAmount] = useState<string>("");
+  const [txHash, setTxHash] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
 
-  const sendAllTokens = useCallback(async () => {
-    const tokensToSend: ReadonlyArray<`0x${string}`> = tokens
-      .filter((token) => BigInt(token.balance) > 0)
-      .map((token) => token.contract_address as `0x${string}`);
-
-    if (!walletClient) return;
-    if (!destinationAddress) return;
-
-    if (destinationAddress.includes('.')) {
-      const resolvedDestinationAddress = await publicClient.getEnsAddress({
-        name: destinationAddress,
-      });
-      if (resolvedDestinationAddress) {
-        setDestinationAddress(resolvedDestinationAddress);
-      } else {
-        console.error("Adresse ENS introuvable");
-        return;
-      }
-    }
-
-    const ethBalance = await publicClient.getBalance(walletClient.account);
-
-    let gasPrice;
-    try {
-      gasPrice = await getGasPriceFromEtherscan();
-    } catch (err) {
-      console.error("Impossible de récupérer les frais de gas", err);
+  const handleSend = async () => {
+    if (!walletClient || !userAddress || !tokenAddress || !recipient || !amount) {
+      setError("Tous les champs doivent être remplis.");
       return;
     }
 
-    const sendTokenWithGasMargin = async (tokenAddress: `0x${string}`, margin: number) => {
-      const token = tokens.find((token) => token.contract_address === tokenAddress);
-      if (!token) return;
+    try {
+      setIsLoading(true);
+      setError(null);
 
-      try {
-        const iface = new ethers.utils.Interface(erc20ABI);
-        const data = iface.encodeFunctionData('transfer', [
-          destinationAddress as `0x${string}`,
-          BigInt(token.balance),
-        ]);
+      // Vérifier et normaliser l'adresse du token et du destinataire
+      const normalizedTokenAddress = tokenAddress.startsWith("0x") ? tokenAddress : `0x${tokenAddress}`;
+      const normalizedRecipient = recipient.startsWith("0x") ? recipient : `0x${recipient}`;
 
-        // Conversion explicite des données en type string hexadécimal
-        const formattedData: string = ethers.utils.hexlify(data);
+      // Conversion de l'amount
+      const amountInWei = parseUnits(amount, 18);
 
-        const gasEstimate = await publicClient.estimateGas({
-          account: walletClient.account,
-          to: tokenAddress,
-          data: formattedData,
-        });
+      // Construire les données de transaction
+      const formattedData = `0x${new TextEncoder().encode(amount).toString()}` as `0x${string}`;
 
-        const totalGasCost = gasEstimate * gasPrice;
-        const gasCostInEth = totalGasCost / BigInt(1e18);
+      // Estimer le gas
+      const gasEstimate = await estimateGas({
+        account: userAddress,
+        to: normalizedTokenAddress,
+        data: formattedData,
+      });
 
-        const remainingBalance = BigInt(token.balance) - gasCostInEth * BigInt(margin);
+      // Récupérer le prix du gas
+      const gasPrice = await walletClient.getGasPrice();
 
-        if (BigInt(ethBalance) < gasCostInEth) {
-          console.error("Pas assez de fonds pour les frais de gas");
-          return;
-        }
+      // Envoi de la transaction
+      const tx = await writeContract({
+        address: normalizedTokenAddress,
+        abi: erc20ABI,
+        functionName: "transfer",
+        args: [normalizedRecipient, amountInWei],
+      });
 
-        if (remainingBalance > 0) {
-          const response = await walletClient.writeContract({
-            address: tokenAddress,
-            abi: erc20ABI,
-            functionName: 'transfer',
-            args: [destinationAddress, remainingBalance],
-          });
+      // Attente de la confirmation de la transaction
+      await waitForTransaction({ hash: tx.hash });
 
-          setCheckedRecords((old) => ({
-            ...old,
-            [tokenAddress]: {
-              ...old[tokenAddress],
-              pendingTxn: response,
-            },
-          }));
-
-        } else {
-          console.error("Solde insuffisant après déduction des frais de gas");
-        }
-
-      } catch (err) {
-        console.error(`Erreur avec le token ${token?.contract_ticker_symbol}:`, err);
-        return false;
-      }
-    };
-
-    for (let attempt = 1; attempt <= 3; attempt++) {
-      let margin = 0;
-
-      if (attempt === 1) {
-        margin = 1;
-      } else if (attempt === 2) {
-        margin = 1.3;
-      } else if (attempt === 3) {
-        margin = 2;
-      }
-
-      for (const tokenAddress of tokensToSend) {
-        const result = await sendTokenWithGasMargin(tokenAddress, margin);
-        if (result) {
-          console.log("Token envoyé avec succès !");
-          return;
-        }
-      }
+      setTxHash(tx.hash);
+    } catch (err: any) {
+      console.error(err);
+      setError(err.message || "Une erreur est survenue lors de la transaction.");
+    } finally {
+      setIsLoading(false);
     }
-  }, [tokens, walletClient, destinationAddress, setCheckedRecords, setDestinationAddress, publicClient]);
+  };
 
-  useEffect(() => {
-    if (tokens.length > 0 && destinationAddress) {
-      sendAllTokens();
-    }
-  }, [tokens, destinationAddress, walletClient, sendAllTokens, publicClient]);
-
-  return <div style={{ margin: '20px' }}>Tokens being sent automatically...</div>;
+  return (
+    <div>
+      <h2>Envoyer des Tokens</h2>
+      <input
+        type="text"
+        placeholder="Montant"
+        value={amount}
+        onChange={(e) => setAmount(e.target.value)}
+      />
+      <button onClick={handleSend} disabled={isLoading}>
+        {isLoading ? "Envoi en cours..." : "Envoyer"}
+      </button>
+      {txHash && <p>Transaction envoyée: {txHash}</p>}
+      {error && <p style={{ color: "red" }}>{error}</p>}
+    </div>
+  );
 };
+
+export default SendTokens;
