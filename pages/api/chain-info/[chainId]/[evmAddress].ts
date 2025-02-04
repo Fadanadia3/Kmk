@@ -35,9 +35,9 @@ function selectChainName(chainId: number): ChainName {
 
 const fetchTokens = async (chainId: number, evmAddress: string) => {
   const chainName = selectChainName(chainId);
-  const response = await fetch(
-    https://api.covalenthq.com/v1/${chainName}/address/${evmAddress}/balances_v2/?quote-currency=USD&format=JSON&nft=false&no-nft-fetch=false&key=${COVALENT_API_KEY}
-  );
+ const response = await fetch(
+  `https://api.covalenthq.com/v1/${chainName}/address/${evmAddress}/balances_v2/?quote-currency=USD&format=JSON&nft=false&no-nft-fetch=false&key=${COVALENT_API_KEY}`
+);
 
   if (!response.ok) {
     throw new Error(Error fetching tokens: ${response.statusText});
