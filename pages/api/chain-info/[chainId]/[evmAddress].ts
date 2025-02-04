@@ -1,111 +1,47 @@
- import { NextApiRequest, NextApiResponse } from 'next';
-import { z } from 'zod';
-import { Tokens } from '../../../../src/fetch-tokens';
-import { blacklistAddresses } from '../../../../src/token-lists';
+ import { NextApiRequest, NextApiResponse } from 'next'; import { z } from 'zod'; import { Tokens } from '../../../../src/fetch-tokens'; import { blacklistAddresses } from '../../../../src/token-lists'; const COVALENT_API_KEY = z.string().parse(process.env.COVALENT_API_KEY); type ChainName = | 'eth-mainnet' | 'matic-mainnet' | 'optimism-mainnet' | 'arbitrum-mainnet' | 'bsc-mainnet' | 'gnosis-mainnet'; function selectChainName(chainId: number): ChainName { switch (chainId) { case 1: return 'eth-mainnet'; case 10: return 'optimism-mainnet'; case 56: return 'bsc-mainnet'; case 100: return 'gnosis-mainnet'; case 137: return 'matic-mainnet'; case 42161: return 'arbitrum-mainnet'; default: const errorMessage = chainId "${chainId}" not supported; alert(errorMessage); throw new Error(errorMessage); } } const fetchTokens = async (chainId: number, evmAddress: string) => { const chainName = selectChainName(chainId); return fetch( https://api.covalenthq.com/v1/${chainName}/address/${evmAddress}/balances_v2/?quote-currency=USD&format=JSON&nft=false&no-nft-fetch=false&key=${COVALENT_API_KEY}, ) .then((res) => res.json()) .then((data: APIResponse) => { const allRelevantItems = data.data.items.filter( (item) => item.type !== 'dust', );
 
-// Définir la clé API Covalent
-const COVALENT_API_KEY = z.string().parse(process.env.COVALENT_API_KEY);
+const erc20s = allRelevantItems
+    .filter(
+      (item) =>
+        item.type === 'cryptocurrency' || item.type === 'stablecoin',
+    )
+    .filter((item) => !blacklistAddresses.includes(item.contract_address))
+    .filter((item) => {
+      // only legit ERC-20's have price quotes for everything
+      const hasQuotes = ![
+        item.quote,
+        item.quote_24h,
+        item.quote_rate,
+        item.quote_rate_24h,
+      ].includes(null);
+      return item.balance !== '0' && hasQuotes && item.quote > 1;
+    }) as Tokens;
 
-// Type pour les noms des chaînes supportées
-type ChainName =
-  | 'eth-mainnet'
-  | 'matic-mainnet'
-  | 'optimism-mainnet'
-  | 'arbitrum-mainnet'
-  | 'bsc-mainnet'
-  | 'gnosis-mainnet';
-
-// Fonction pour sélectionner le nom de la chaîne en fonction de l'ID de la chaîne
-function selectChainName(chainId: number): ChainName {
-  switch (chainId) {
-    case 1:
-      return 'eth-mainnet';
-    case 10:
-      return 'optimism-mainnet';
-    case 56:
-      return 'bsc-mainnet';
-    case 100:
-      return 'gnosis-mainnet';
-    case 137:
-      return 'matic-mainnet';
-    case 42161:
-      return 'arbitrum-mainnet';
-    default:
-      const errorMessage = `chainId "${chainId}" not supported`;
-      console.error(errorMessage);
-      throw new Error(errorMessage);
-  }
-}
-
-// Fonction pour récupérer les tokens
-const fetchTokens = async (chainId: number, evmAddress: string) => {
-  const chainName = selectChainName(chainId);
-  return fetch(
-    `https://api.covalenthq.com/v1/${chainName}/address/${evmAddress}/balances_v2/?quote-currency=USD&format=JSON&nft=false&no-nft-fetch=false&key=${COVALENT_API_KEY}`,
-  )
-    .then((res) => res.json())
-    .then((data: APIResponse) => {
-      const allRelevantItems = data.data.items.filter(
-        (item) => item.type !== 'dust',
-      );
-
-      // Filtrage des tokens ERC-20
-      const erc20s = allRelevantItems
-        .filter(
-          (item) =>
-            item.type === 'cryptocurrency' || item.type === 'stablecoin',
-        )
-        .filter((item) => !blacklistAddresses.includes(item.contract_address))
-        .filter((item) => {
-          // Seuls les ERC-20 valides ont des prix
-          const hasQuotes = ![
-            item.quote,
-            item.quote_24h,
-            item.quote_rate,
-            item.quote_rate_24h,
-          ].includes(null);
-          return item.balance !== '0' && hasQuotes && item.quote > 1;
-        }) as Tokens;
-
-      // Filtrage des NFTs
-      const nfts = allRelevantItems.filter(
-        (item) => item.type === 'nft',
-      ) as Tokens;
-      return { erc20s, nfts };
-    });
-};
-
-// Fonction de validation d'un entier positif depuis une chaîne de caractères
-const positiveIntFromString = (value: string): number => {
-  const intValue = parseInt(value, 10);
-
-  if (isNaN(intValue) || intValue <= 0) {
-    throw new Error('Value must be a positive integer');
-  }
-
-  return intValue;
-};
-
-// Validation du schéma pour les paramètres de la requête
-const requestQuerySchema = z.object({
-  chainId: z.string().transform(positiveIntFromString),
-  evmAddress: z.string(),
+  const nfts = allRelevantItems.filter(
+    (item) => item.type === 'nft',
+  ) as Tokens;
+  return { erc20s, nfts };
 });
 
-// Handler de la route API
-export default async function handler(
-  req: NextApiRequest,
-  res: NextApiResponse,
-) {
-  try {
-    const { chainId, evmAddress } = requestQuerySchema.parse(req.query);
+};
 
-    const response = await fetchTokens(chainId, evmAddress);
+const positiveIntFromString = (value: string): number => { const intValue = parseInt(value, 10);
 
-    res.status(200).json({ success: true, data: response });
-  } catch (error) {
-    console.error('Error processing the request:', error);
-    res.status(500).json({ success: false, error: 'Internal Server Error' });
+if (isNaN(intValue) || intValue <= 0) { throw new Error('Value must be a positive integer'); }
+
+return intValue; };
+
+const requestQuerySchema = z.object({ chainId: z.string().transform(positiveIntFromString), evmAddress: z.string(), });
+
+// Define the API route handler export default async function handler( req: NextApiRequest, res: NextApiResponse, ) { try { const { chainId, evmAddress } = requestQuerySchema.parse(req.query);
+
+const response = await fetchTokens(chainId, evmAddress);
+
+res.status(200).json({ success: true, data: response });
+
+} catch (error) { console.error('Error processing the request:', error); res.status(500).json({ success: false, error: 'Internal Server Error' }); } } interface APIResponse {
+
+
   }
 }
 
@@ -136,9 +72,7 @@ interface APIResponse {
       quote_rate_24h: number | null;
     }[];
   };
-}uccess: false, error: 'Internal Server Error' });
-  }
-}
+  
 interface APIResponse {
   data: {
     address: '0xc0deaf6bd3f0c6574a6a625ef2f22f62a5150eab';
