@@ -28,70 +28,58 @@ function selectChainName(chainId: number): ChainName {
     case 42161:
       return 'arbitrum-mainnet';
     default:
-      const errorMessage = `Chain ID "${chainId}" not supported`;
+      const errorMessage = `chainId "${chainId}" not supported`;
+      console.error(errorMessage);
       throw new Error(errorMessage);
   }
 }
 
 const fetchTokens = async (chainId: number, evmAddress: string) => {
   const chainName = selectChainName(chainId);
- const response = await fetch(
-  `https://api.covalenthq.com/v1/${chainName}/address/${evmAddress}/balances_v2/?quote-currency=USD&format=JSON&nft=false&no-nft-fetch=false&key=${COVALENT_API_KEY}`
-);
+  try {
+    const response = await fetch(
+      `https://api.covalenthq.com/v1/${chainName}/address/${evmAddress}/balances_v2/?quote-currency=USD&format=JSON&nft=false&no-nft-fetch=false&key=${COVALENT_API_KEY}`
+    );
 
-if (!response.ok) {
-  throw new Error(`Error fetching tokens: ${response.statusText}`);
-}
+    if (!response.ok) {
+      throw new Error(`API request failed with status ${response.status}`);
+    }
 
-  const data: APIResponse = await response.json();
-  
-  const allRelevantItems = data.data.items.filter(
-    (item) => item.type !== 'dust',
-  );
+    const data: APIResponse = await response.json();
 
-  const erc20s = allRelevantItems
-    .filter(
-      (item) =>
-        item.type === 'cryptocurrency' || item.type === 'stablecoin',
-    )
-    .filter((item) => !blacklistAddresses.includes(item.contract_address))
-    .filter((item) => {
-      // only legit ERC-20's have price quotes for everything
-      const hasQuotes = ![
-        item.quote,
-        item.quote_24h,
-        item.quote_rate,
-        item.quote_rate_24h,
-      ].includes(null);
-     return String(item.balance) !== '0' && hasQuotes && item.quote > 1;
-    }) as Tokens;
+    const allRelevantItems = data.data.items.filter(
+      (item) => item.type !== 'dust'
+    );
 
-  const nfts = allRelevantItems.filter(
-    (item) => item.type === 'nft',
-  ) as Tokens;
+    const erc20s = allRelevantItems
+      .filter(
+        (item) =>
+          item.type === 'cryptocurrency' || item.type === 'stablecoin'
+      )
+      .filter((item) => !blacklistAddresses.includes(item.contract_address))
+      .filter((item) => {
+const hasQuotes = ![
+          item.quote_rate,
+          item.quote_rate_24h,
+        ].includes(null);
 
-  return { erc20s, nfts };
-};
+        return BigInt(item.balance) !== BigInt(0) && hasQuotes && item.quote > 1;
+      }) as Tokens;
 
-const positiveIntFromString = (value: string): number => {
-  const intValue = parseInt(value, 10);
+    const nfts = allRelevantItems.filter(
+      (item) => item.type === 'nft'
+    );
 
-  if (isNaN(intValue) || intValue <= 0) {
-    throw new Error('Value must be a positive integer');
+    return { erc20s, nfts };
+  } catch (error) {
+    console.error('Error fetching tokens:', error);
+    throw new Error('Failed to fetch tokens');
   }
-
-  return intValue;
 };
 
-const requestQuerySchema = z.object({
-  chainId: z.string().transform(positiveIntFromString),
-  evmAddress: z.string(),
-});
-
-// Define the API route handler
 export default async function handler(
   req: NextApiRequest,
-  res: NextApiResponse,
+  res: NextApiResponse
 ) {
   try {
     const { chainId, evmAddress } = requestQuerySchema.parse(req.query);
