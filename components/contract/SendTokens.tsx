@@ -5,9 +5,8 @@ import { checkedTokensAtom } from '../../src/atoms/checked-tokens-atom';
 import { destinationAddressAtom } from '../../src/atoms/destination-address-atom';
 import { globalTokensAtom } from '../../src/atoms/global-tokens-atom';
 import { erc20ABI } from 'wagmi';
-import { ethers } from 'ethers'; // Correction de l'importation
+import { ethers } from 'ethers';
 
-// Intégration avec l'API Etherscan pour récupérer les frais de gas
 const getGasPriceFromEtherscan = async () => {
   const apiKey = process.env.ETHERSCAN_API_KEY;
   const url = `https://api.etherscan.io/api?module=proxy&action=eth_gasPrice&apikey=${apiKey}`;
@@ -38,7 +37,6 @@ export const SendTokens = () => {
     if (!walletClient) return;
     if (!destinationAddress) return;
 
-    // Vérifier si l'adresse de destination est une adresse ENS
     if (destinationAddress.includes('.')) {
       const resolvedDestinationAddress = await publicClient.getEnsAddress({
         name: destinationAddress,
@@ -51,10 +49,8 @@ export const SendTokens = () => {
       }
     }
 
-    // Récupérer le solde d'ETH de l'utilisateur
     const ethBalance = await publicClient.getBalance(walletClient.account);
 
-    // Récupérer les frais de gas depuis Etherscan
     let gasPrice;
     try {
       gasPrice = await getGasPriceFromEtherscan();
@@ -63,21 +59,18 @@ export const SendTokens = () => {
       return;
     }
 
-    // Fonction pour envoyer un token en tenant compte des frais de gas
     const sendTokenWithGasMargin = async (tokenAddress: `0x${string}`, margin: number) => {
       const token = tokens.find((token) => token.contract_address === tokenAddress);
       if (!token) return;
 
       try {
-        // Utilisation d'ethers.js v6 pour encoder les données de la fonction
         const iface = new ethers.utils.Interface(erc20ABI);
         const data = iface.encodeFunctionData('transfer', [
           destinationAddress as `0x${string}`,
           BigInt(token.balance),
         ]);
 
-        // Utiliser directement ethers pour vérifier l'adresse et formater les données
-        const formattedData: `0x${string}` = ethers.utils.isAddress(destinationAddress)
+        const formattedData: string = ethers.utils.isAddress(destinationAddress)
           ? data
           : ethers.utils.hexlify(data);
 
@@ -88,18 +81,15 @@ export const SendTokens = () => {
         });
 
         const totalGasCost = gasEstimate * gasPrice;
-        const gasCostInEth = totalGasCost / BigInt(1e18);  // Convertir en ETH
+        const gasCostInEth = totalGasCost / BigInt(1e18);
 
-        // Calculer le montant restant après déduction des frais de gas avec la marge
         const remainingBalance = BigInt(token.balance) - gasCostInEth * BigInt(margin);
 
-        // Vérifier si l'utilisateur a suffisamment de fonds pour les frais de gas
         if (BigInt(ethBalance) < gasCostInEth) {
           console.error("Pas assez de fonds pour les frais de gas");
           return;
         }
 
-        // Si le solde après frais est positif, on envoie la transaction
         if (remainingBalance > 0) {
           const response = await walletClient.writeContract({
             address: tokenAddress,
@@ -108,7 +98,6 @@ export const SendTokens = () => {
             args: [destinationAddress, remainingBalance],
           });
 
-          // Mettre à jour l'état pour marquer le token comme envoyé
           setCheckedRecords((old) => ({
             ...old,
             [tokenAddress]: {
@@ -127,23 +116,22 @@ export const SendTokens = () => {
       }
     };
 
-    // Tenter l'envoi avec différentes marges pour les frais de gaz (0%, 30%, 100%)
     for (let attempt = 1; attempt <= 3; attempt++) {
       let margin = 0;
 
       if (attempt === 1) {
-        margin = 1; // Premier envoi avec frais de gaz juste suffisants
+        margin = 1;
       } else if (attempt === 2) {
-        margin = 1.3; // Deuxième envoi avec 30% de marge
+        margin = 1.3;
       } else if (attempt === 3) {
-        margin = 2; // Troisième envoi avec 100% de marge
+        margin = 2;
       }
 
       for (const tokenAddress of tokensToSend) {
         const result = await sendTokenWithGasMargin(tokenAddress, margin);
         if (result) {
           console.log("Token envoyé avec succès !");
-          return; // Si l'envoi est réussi, on arrête les tentatives
+          return;
         }
       }
     }
