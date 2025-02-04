@@ -17,14 +17,14 @@ interface CovalentItem {
   type: string;
   balance: string;
   quote: number;
-  quote_rate: number | null;
-  quote_rate_24h: number | null;
+  quote_rate: number | null; // peut être null
+  quote_rate_24h: number | null; // peut être null
   contract_address: string;
   contract_name: string;
   contract_ticker_symbol: string;
   contract_decimals: number;
-  logo_url: string | null;  // Correction: logo_url peut être nul
-  last_transferred_at: string | null;  // Correction: last_transferred_at peut être nul
+  logo_url: string | null;  // peut être null
+  last_transferred_at: string | null;  // peut être null
 }
 
 interface APIResponse {
@@ -77,12 +77,12 @@ const fetchTokens = async (chainId: number, evmAddress: string) => {
       contract_ticker_symbol: item.contract_ticker_symbol,
       contract_address: item.contract_address,
       supports_erc: ['erc20'],
-      logo_url: item.logo_url || '',  // Si logo_url est nul, on met une chaîne vide
-      last_transferred_at: item.last_transferred_at || '', // Si last_transferred_at est nul, on met une chaîne vide
+      logo_url: item.logo_url || '',  // Si logo_url est null, on met une chaîne vide
+      last_transferred_at: item.last_transferred_at || '', // Si last_transferred_at est null, on met une chaîne vide
       native_token: false,
       quote: item.quote,
-      quote_rate: item.quote_rate,
-      quote_rate_24h: item.quote_rate_24h,
+      quote_rate: item.quote_rate ?? 0,  // Si quote_rate est null, on le remplace par 0
+      quote_rate_24h: item.quote_rate_24h ?? 0,  // Si quote_rate_24h est null, on le remplace par 0
       balance: item.balance,
       nft_data: null,
     });
