@@ -120,12 +120,9 @@ interface APIResponse {
       quote_24h: number | null;
       quote_rate: number | null;
       quote_rate_24h: number | null;
-    }[];
-  };
-}
-  }
-}
-
+    }
+   }
+ 
 // Définition du type pour la réponse de l'API
 interface APIResponse {
   data: {
