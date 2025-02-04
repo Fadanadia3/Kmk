@@ -59,9 +59,13 @@ const fetchTokens = async (chainId: number, evmAddress: string) => {
         }) as Tokens;
 
       const nfts = allRelevantItems
-  .filter((item) => item.type === 'nft' && item.supports_erc.length === 1 && item.supports_erc[0] === 'erc20')
-  .map((item) => item as Tokens);  // Filtrage plus strict
-return { erc20s, nfts };
+.filter(
+  (item) =>
+    item.type === 'nft' &&
+    Array.isArray(item.supports_erc) &&  // Vérifie que supports_erc est bien un tableau
+    item.supports_erc.length === 1 &&
+    item.supports_erc[0] === 'erc20'  // Vérifie qu'il contient bien 'erc20'
+);
     });
 };
 
