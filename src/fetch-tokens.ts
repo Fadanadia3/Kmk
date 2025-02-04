@@ -19,6 +19,6 @@ export type Tokens = ReadonlyArray<{
   quote_rate: number;
   quote_rate_24h: number;
   quote: number;
-  quote_24h: number;
+  quote_24h: number;  // Ajout de quote_24h
   nft_data: null;
 }>;
