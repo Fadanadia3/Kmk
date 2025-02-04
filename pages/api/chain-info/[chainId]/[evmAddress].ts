@@ -22,7 +22,7 @@ interface CovalentItem {
   balance: string;
   quote: number;
   quote_rate: number | null;
-  quote_rate_24h: number | null;
+  quote_rate_24h: number | null; // Modification pour rendre `quote_rate_24h` nullable
   contract_address: string;
   contract_name: string;
   contract_ticker_symbol: string;
@@ -77,7 +77,7 @@ const fetchTokens = async (chainId: number, evmAddress: string) => {
 
     const mapToTokens = (item: CovalentItem): Tokens[0] => ({
       type: item.type,
-      balance_24h: item.quote_rate_24h !== null ? item.quote_rate_24h.toString() : '0',
+      balance_24h: item.quote_rate_24h !== null ? item.quote_rate_24h.toString() : '0', // Gestion de quote_rate_24h nullable
       contract_decimals: item.contract_decimals,
       contract_name: item.contract_name,
       contract_ticker_symbol: item.contract_ticker_symbol,
