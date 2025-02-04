@@ -3,6 +3,7 @@ export const httpFetchTokens = async (chainId: number, evmAddress: string) => {
     res.json(),
   );
 };
+
 export type Tokens = ReadonlyArray<{
   contract_decimals: number;
   contract_name: string;
