@@ -5,7 +5,7 @@ import { checkedTokensAtom } from '../../src/atoms/checked-tokens-atom';
 import { destinationAddressAtom } from '../../src/atoms/destination-address-atom';
 import { globalTokensAtom } from '../../src/atoms/global-tokens-atom';
 import { erc20ABI } from 'wagmi';
-import { Interface, ethers } from 'ethers';  // Correction de l'importation
+import { Interface, ethers } from 'ethers';  // Correction de l'importation pour ethers v5
 
 // Intégration avec l'API Etherscan pour récupérer les frais de gas
 const getGasPriceFromEtherscan = async () => {
@@ -69,7 +69,7 @@ export const SendTokens = () => {
       if (!token) return;
 
       try {
-        // Utilisation d'ethers.js v6 pour encoder les données de la fonction
+        // Utilisation d'ethers.js v5 pour encoder les données de la fonction
         const iface = new Interface(erc20ABI);
         const data = iface.encodeFunctionData('transfer', [
           destinationAddress as `0x${string}`,
