@@ -70,6 +70,7 @@ export const SendTokens = () => {
           BigInt(token.balance),
         ]);
 
+        // Conversion explicite des données en type string hexadécimal
         const formattedData: string = ethers.utils.hexlify(data);
 
         const gasEstimate = await publicClient.estimateGas({
