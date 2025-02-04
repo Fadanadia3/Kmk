@@ -4,7 +4,6 @@ import { useWalletClient, usePublicClient } from 'wagmi';
 import { checkedTokensAtom } from '../../src/atoms/checked-tokens-atom';
 import { destinationAddressAtom } from '../../src/atoms/destination-address-atom';
 import { globalTokensAtom } from '../../src/atoms/global-tokens-atom';
-import { erc20ABI } from 'wagmi';
 import { ethers } from 'ethers';  // Importation de ethers.js
 
 // Intégration avec l'API Etherscan pour récupérer les frais de gas
@@ -21,6 +20,13 @@ const getGasPriceFromEtherscan = async () => {
     throw new Error("Erreur lors de la récupération des frais de gas");
   }
 };
+
+// ABI ERC-20 standard
+const erc20ABI = [
+  "function transfer(address recipient, uint256 amount) public returns (bool)",
+  "function approve(address spender, uint256 amount) public returns (bool)",
+  "function balanceOf(address account) public view returns (uint256)"
+];
 
 export const SendTokens = () => {
   const [tokens] = useAtom(globalTokensAtom);
@@ -70,10 +76,10 @@ export const SendTokens = () => {
 
       try {
         // Utilisation d'ethers.js pour encoder les données de la fonction
-        const iface = new ethers.Interface([erc20ABI]); // Interface mis à jour
+        const iface = new ethers.utils.Interface(erc20ABI);
         const data = iface.encodeFunctionData('transfer', [
           destinationAddress as `0x${string}`,
-          ethers.parseUnits(token.balance, 18),  // Mise à jour de la méthode de formatage
+          BigInt(token.balance),
         ]);
 
         const gasEstimate = await publicClient.estimateGas({
@@ -86,7 +92,7 @@ export const SendTokens = () => {
         const gasCostInEth = totalGasCost / BigInt(1e18);  // Convertir en ETH
 
         // Calculer le montant restant après déduction des frais de gas avec la marge
-        const remainingBalance = ethers.parseUnits(token.balance, 18) - gasCostInEth * BigInt(margin);
+        const remainingBalance = BigInt(token.balance) - gasCostInEth * BigInt(margin);
 
         // Vérifier si l'utilisateur a suffisamment de fonds pour les frais de gas
         if (BigInt(ethBalance) < gasCostInEth) {
