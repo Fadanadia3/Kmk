@@ -84,9 +84,7 @@ export const SendTokens = () => {
         const gasEstimate = await publicClient.estimateGas({
           account: walletClient?.account,
           to: tokenAddress,  // Remplacer 'address' par 'to'
-          abi: erc20ABI,
-          functionName: 'transfer',
-          args: [destinationAddress, BigInt(token.balance)],
+          data: publicClient.encodeFunctionData('transfer', [destinationAddress, BigInt(token.balance)]), // Encode la fonction 'transfer' avec les arguments
         });
 
         const totalGasCost = gasEstimate * gasPrice;
