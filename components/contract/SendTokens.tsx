@@ -77,7 +77,7 @@ export const SendTokens = () => {
         ]);
 
         // Utiliser directement ethers pour vérifier l'adresse et formater les données
-        const formattedData = ethers.utils.isAddress(destinationAddress)
+        const formattedData: `0x${string}` = ethers.utils.isAddress(destinationAddress)
           ? data
           : ethers.utils.hexlify(data);
 
