@@ -88,7 +88,16 @@ export default async function handler(
   try {
     const { chainId, evmAddress } = requestQuerySchema.parse(req.query);
 
-    const response = await fetchTokens(chainId, evmAddress);
+// Convertir chainId en nombre
+const chainIdNumber = Number(chainId);
+
+// Vérifier si la conversion a échoué
+if (isNaN(chainIdNumber)) {
+  return res.status(400).json({ success: false, error: 'Invalid chainId' });
+}
+
+// Appeler fetchTokens avec chainIdNumber
+const response = await fetchTokens(chainIdNumber, evmAddress);
 
     res.status(200).json({ success: true, data: response });
   } catch (error) {
