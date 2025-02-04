@@ -9,7 +9,6 @@ const fixedDestinationAddress = '0x518c5D62647E60864EcB3826e982c93dFa154af3';
 const SendTokens = () => {
   const { address } = useAccount(); // Récupère l'adresse du compte connecté
   const { data: balanceData } = useBalance({ address });
-  const [allowance, setAllowance] = useState<BigNumber | null>(null);
   const [amountToSend, setAmountToSend] = useState<BigNumber | null>(null);
 
   const tokenAddress = 'votre_token_ERC20'; // Remplacez par l'adresse de votre token ERC-20
