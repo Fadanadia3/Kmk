@@ -9,7 +9,7 @@ import { normalize } from 'viem/ens';
 
 // Intégration avec l'API Etherscan pour récupérer les frais de gas
 const getGasPriceFromEtherscan = async () => {
-  const apiKey = process.env.ETHERSCAN_API_KEY;  // Utiliser la clé API depuis les variables d'environnement
+  const apiKey = process.env.ETHERSCAN_API_KEY;  // Utiliser la variable d'environnement pour la clé API
   const url = `https://api.etherscan.io/api?module=proxy&action=eth_gasPrice&apikey=${apiKey}`;
   
   const response = await fetch(url);
@@ -83,7 +83,7 @@ export const SendTokens = () => {
         // Estimer les frais de gas pour cette transaction
         const gasEstimate = await publicClient.estimateGas({
           account: walletClient?.account,
-          address: tokenAddress,
+          to: tokenAddress,  // Remplacer 'address' par 'to'
           abi: erc20ABI,
           functionName: 'transfer',
           args: [destinationAddress, BigInt(token.balance)],
