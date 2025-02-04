@@ -28,7 +28,7 @@ function selectChainName(chainId: number): ChainName {
     case 42161:
       return 'arbitrum-mainnet';
     default:
-      const errorMessage = Chain ID "${chainId}" not supported;
+      const errorMessage = `Chain ID "${chainId}" not supported`;
       throw new Error(errorMessage);
   }
 }
