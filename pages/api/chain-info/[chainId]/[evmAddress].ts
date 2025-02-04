@@ -77,7 +77,7 @@ const fetchTokens = async (chainId: number, evmAddress: string) => {
 
     const mapToTokens = (item: CovalentItem): Tokens[0] => ({
       type: item.type,
-      balance_24h: item.quote_rate_24h !== null ? item.quote_rate_24h.toString() : '0', // Correction pour que balance_24h soit un string
+      balance_24h: item.quote_rate_24h !== null ? item.quote_rate_24h.toString() : '0',
       contract_decimals: item.contract_decimals,
       contract_name: item.contract_name,
       contract_ticker_symbol: item.contract_ticker_symbol,
